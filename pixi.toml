@@ -1,0 +1,36 @@
+[workspace]
+name = "play2perfect"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[system-requirements]
+cuda = "12.8"
+libc = { family = "glibc", version = "2.35" }
+
+[dependencies]
+python = "3.11.*"
+
+[pypi-dependencies]
+isaaclab = { version = "==2.3.2.post1", extras = ["isaacsim", "all"], index = "https://pypi.org/simple" }
+torch = { version = "==2.7.0", index = "https://download.pytorch.org/whl/cu128" }
+torchvision = { version = "==0.22.0", index = "https://download.pytorch.org/whl/cu128" }
+typing-extensions = ">=4.13"
+rl-games = { path = "./rl_games", editable = true }
+play2perfect = { path = ".", editable = true }
+
+[pypi-options]
+index-url = "https://pypi.org/simple"
+extra-index-urls = ["https://pypi.nvidia.com"]
+
+[pypi-options.dependency-overrides]
+torch = { version = "==2.7.0", index = "https://download.pytorch.org/whl/cu128" }
+torchvision = { version = "==0.22.0", index = "https://download.pytorch.org/whl/cu128" }
+typing-extensions = ">=4.13"
+
+[tasks.verify]
+cmd = "python -c \"import importlib.metadata as m; import torch, isaaclab; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available()); print('isaaclab:', m.version('isaaclab')); print('play2perfect:', m.version('play2perfect'))\""
+env = { OMNI_KIT_ACCEPT_EULA = "YES" }
+
+[tasks.smoke-test]
+cmd = "python -c \"import os; from isaaclab.app import AppLauncher; app = AppLauncher(headless=True).app; import isaacsimenvs; print('Isaac Sim headless boot and project import: OK', flush=True); os._exit(0)\""
+env = { OMNI_KIT_ACCEPT_EULA = "YES" }

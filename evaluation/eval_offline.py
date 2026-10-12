@@ -18,6 +18,11 @@ Usage:
     python evaluation/eval_offline.py \
         --problem tight_insertion \
         --checkpoint-path pretrained_assembly/tight_insertion/model.pth
+
+    # One rollout with industrial diagnostics and one compact trace
+    python evaluation/eval_offline.py \
+        --problem tight_insertion --num-envs 1 --diagnostics \
+        --diagnostics-trace-envs 0
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -75,10 +81,12 @@ def run_worker(args) -> int:
         _load_env_cfg,
     )
 
-    result = {"problem": args.problem, "checkpoint": args.checkpoint_path}
+    result = {"problem": args.problem, "checkpoint": args.checkpoint_path, "seed": args.seed}
     env = None
+    diagnostics = None
     try:
         cfg = _load_env_cfg(args.task)
+        cfg.seed = args.seed
         _apply_env_overrides(
             cfg,
             problem=args.problem,
@@ -92,6 +100,31 @@ def run_worker(args) -> int:
             keep_dr=False,
             extra_overrides={},
         )
+        if args.diagnostics:
+            cfg.precise_assembly.enable_diagnostics_contact_reporting = True
+            # The task defaults reserve GPU contact buffers for 1K-way training.
+            # Diagnostic runs are intentionally small; right-size only capacity
+            # limits (not solver behavior) so contact reporting does not reserve
+            # gigabytes on a workstation GPU.
+            if args.num_envs <= 64:
+                physx = cfg.sim.physx
+                physx.gpu_max_rigid_contact_count = min(
+                    physx.gpu_max_rigid_contact_count, max(2**18, args.num_envs * 4096)
+                )
+                physx.gpu_max_rigid_patch_count = min(
+                    physx.gpu_max_rigid_patch_count, max(2**16, args.num_envs * 1024)
+                )
+                physx.gpu_found_lost_aggregate_pairs_capacity = min(
+                    physx.gpu_found_lost_aggregate_pairs_capacity,
+                    max(2**16, args.num_envs * 2048),
+                )
+                physx.gpu_total_aggregate_pairs_capacity = min(
+                    physx.gpu_total_aggregate_pairs_capacity,
+                    max(2**17, args.num_envs * 4096),
+                )
+                physx.gpu_collision_stack_size = min(
+                    physx.gpu_collision_stack_size, max(2**26, args.num_envs * 2**22)
+                )
         env = _instantiate_env(args.task, cfg)
 
         agent_cfg = _configure_agent(
@@ -119,6 +152,23 @@ def run_worker(args) -> int:
         player.reset()
         obs = player.env_reset(wrapped)
 
+        if args.diagnostics:
+            from evaluation.assembly_diagnostics import AssemblyDiagnostics, parse_trace_envs
+
+            diagnostics = AssemblyDiagnostics(
+                env,
+                args.diagnostics_dir,
+                trace_envs=parse_trace_envs(args.diagnostics_trace_envs, args.num_envs),
+                max_run_size_mb=args.diagnostics_max_run_size_mb,
+                contact_threshold_n=args.diagnostics_contact_threshold,
+                high_force_threshold_n=args.diagnostics_high_force_threshold,
+                anomalous_force_threshold_n=args.diagnostics_anomalous_force_threshold,
+                anomalous_impulse_threshold_ns=args.diagnostics_anomalous_impulse_threshold,
+                max_contact_points_per_env=args.diagnostics_max_contact_points_per_env,
+                checkpoint=str(args.checkpoint_path),
+            )
+            diagnostics.attach()
+
         # Batched eval: all envs run in parallel and we score only each env's
         # FIRST episode, so the N envs are N i.i.d. trials. Per-episode success is
         # read from env._prev_episode_successes, which reset_utils copies from
@@ -135,9 +185,28 @@ def run_worker(args) -> int:
         step = 0
         while step < args.steps and not bool(done_once.all()):
             action = player.get_action(obs, is_deterministic=True)
+            if diagnostics is not None:
+                diagnostics.set_policy_action(action)
             obs, _rew, dones, _infos = player.env_step(wrapped, action)
             newly = dones.reshape(-1).to(dev).bool() & ~done_once
             ids = torch.nonzero(newly, as_tuple=False).reshape(-1)
+
+            if diagnostics is not None:
+                # Auto-reset has already cleared current episode state for done
+                # envs. Restore their terminal assembly flag from the snapshot
+                # retained by reset_utils before feeding the diagnostics FSM.
+                assembly_now = env._successes >= env.env_max_goals
+                if ids.numel():
+                    assembly_now = assembly_now.clone()
+                    assembly_now[ids] = (
+                        env._prev_episode_successes[ids]
+                        >= env.prev_episode_env_max_goals[ids]
+                    )
+                goal_count_now = env._successes.clone()
+                if ids.numel():
+                    goal_count_now[ids] = env._prev_episode_successes[ids]
+                diagnostics.policy_step(assembly_now, goal_count=goal_count_now)
+
             if ids.numel():
                 succ = env._prev_episode_successes[ids]
                 maxg = env.prev_episode_env_max_goals[ids].clamp_min(1)
@@ -149,8 +218,35 @@ def run_worker(args) -> int:
                 rs = env.extras.get("episode_final", {}).get("retract_success") if has_retract else None
                 if rs is not None:
                     first_retract[ids] = rs[ids].to(dev) > 0.5
+                if diagnostics is not None:
+                    task_success = first_retract[ids] if has_retract else first_full[ids]
+                    diagnostics.finalize(
+                        ids,
+                        completed=torch.ones(ids.numel(), dtype=torch.bool, device=dev),
+                        assembly_success=first_full[ids],
+                        task_success=task_success,
+                        goal_ratio=first_ratio[ids],
+                        policy_steps=first_len[ids],
+                    )
                 done_once[ids] = True
             step += 1
+
+        if diagnostics is not None:
+            unfinished = torch.nonzero(~done_once, as_tuple=False).reshape(-1)
+            if unfinished.numel():
+                maxg = env.env_max_goals[unfinished].clamp_min(1)
+                assembly = env._successes[unfinished] >= env.env_max_goals[unfinished]
+                diagnostics.finalize(
+                    unfinished,
+                    completed=torch.zeros(unfinished.numel(), dtype=torch.bool, device=dev),
+                    assembly_success=assembly,
+                    task_success=torch.zeros(unfinished.numel(), dtype=torch.bool, device=dev),
+                    goal_ratio=(env._successes[unfinished].float() / maxg.float()).clamp(0.0, 1.0),
+                    policy_steps=torch.full(
+                        (unfinished.numel(),), step, dtype=torch.long, device=dev
+                    ),
+                )
+            result["diagnostics_dir"] = str(Path(args.diagnostics_dir).resolve())
 
         # Exclude envs whose first episode ended almost immediately: those starts
         # were unstable / ungraspable (object fell at reset), so the task was
@@ -169,6 +265,8 @@ def run_worker(args) -> int:
         print(_RESULT_PREFIX + json.dumps(result), flush=True)
     finally:
         try:
+            if diagnostics is not None:
+                diagnostics.close()
             if env is not None:
                 env.close()
         except Exception:
@@ -193,12 +291,17 @@ def _resolve_checkpoint(args, problem: str) -> Path | None:
 
 def run_driver(args) -> int:
     problems = [args.problem] if args.problem else list(ALL_PROBLEMS)
+    diagnostics_root = None
+    if args.diagnostics:
+        diagnostics_root = Path(args.diagnostics_dir) / datetime.now().strftime("%Y%m%d_%H%M%S")
     rows = []
+    worker_failed = False
     for problem in problems:
         ckpt = _resolve_checkpoint(args, problem)
         if ckpt is None or not ckpt.is_file():
             print(f"[skip] {problem}: no checkpoint (looked in {args.policies_dir}/{problem}/model.pth)")
             rows.append({"problem": problem, "error": "missing checkpoint"})
+            worker_failed = True
             continue
         cmd = [
             sys.executable, "-u", str(Path(__file__).resolve()), "--worker",
@@ -208,6 +311,7 @@ def run_driver(args) -> int:
             "--agent", args.agent,
             "--num-envs", str(args.num_envs),
             "--steps", str(args.steps),
+            "--seed", str(args.seed),
             "--min-episode-steps", str(args.min_episode_steps),
             "--rl-device", args.rl_device,
             "--sim-device", args.sim_device,
@@ -215,6 +319,29 @@ def run_driver(args) -> int:
             "--insertion-success-tolerance", str(args.insertion_success_tolerance),
             "--retract-success-tolerance", str(args.retract_success_tolerance),
         ]
+        if args.diagnostics:
+            diagnostics_dir = diagnostics_root / problem
+            cmd.extend(
+                [
+                    "--diagnostics",
+                    "--diagnostics-dir", str(diagnostics_dir),
+                    "--diagnostics-trace-envs", args.diagnostics_trace_envs,
+                    "--diagnostics-max-run-size-mb", str(args.diagnostics_max_run_size_mb),
+                    "--diagnostics-contact-threshold", str(args.diagnostics_contact_threshold),
+                    "--diagnostics-high-force-threshold", str(
+                        args.diagnostics_high_force_threshold
+                    ),
+                    "--diagnostics-anomalous-force-threshold", str(
+                        args.diagnostics_anomalous_force_threshold
+                    ),
+                    "--diagnostics-anomalous-impulse-threshold", str(
+                        args.diagnostics_anomalous_impulse_threshold
+                    ),
+                    "--diagnostics-max-contact-points-per-env", str(
+                        args.diagnostics_max_contact_points_per_env
+                    ),
+                ]
+            )
         env = os.environ.copy()
         env.setdefault("OMNI_KIT_ACCEPT_EULA", "YES")
         print(f"\n===== evaluating {problem} =====", flush=True)
@@ -225,7 +352,20 @@ def run_driver(args) -> int:
             print(line)
             if line.startswith(_RESULT_PREFIX):
                 row = json.loads(line[len(_RESULT_PREFIX):])
+        if proc.returncode != 0:
+            worker_failed = True
+            row = {"problem": problem, "error": f"worker exited {proc.returncode}"}
         rows.append(row)
+
+    if diagnostics_root is not None:
+        from evaluation.report_assembly_diagnostics import generate_report
+
+        try:
+            report_paths = generate_report(diagnostics_root)
+        except FileNotFoundError as exc:
+            print(f"[diagnostics] report skipped: {exc}")
+        else:
+            print(f"[diagnostics] HTML report: {report_paths['report_html']}")
 
     print("\n" + "=" * 86)
     print(f"{'problem':28s} {'trials':>8s} {'bad_init':>9s} {'success':>9s} {'goal_ratio':>11s} {'retract':>9s}")
@@ -240,7 +380,7 @@ def run_driver(args) -> int:
     print("=" * 86)
     print("trials = valid first episodes; bad_init = discarded unstable-init starts;")
     print("success = first episode reached all subgoals (over valid trials).")
-    return 0
+    return 1 if worker_failed else 0
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -256,6 +396,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--steps", type=int, default=2500,
                    help="Max control steps; loop ends early once every env finishes episode 1. "
                         "Higher so long tasks (e.g. screwing, 10 subgoals) finish.")
+    p.add_argument("--seed", type=int, default=42, help="Evaluation environment seed recorded in diagnostics metadata.")
     p.add_argument("--min-episode-steps", type=int, default=100,
                    help="Discard first episodes that end within this many steps as unstable "
                         "inits (object fell/ungraspable at reset → impossible trial).")
@@ -264,12 +405,41 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--retract-success-tolerance", type=float, default=0.005)
     p.add_argument("--rl-device", default="cuda:0")
     p.add_argument("--sim-device", default="cuda:0")
+    p.add_argument(
+        "--diagnostics",
+        action="store_true",
+        help="Enable evaluation-only industrial assembly diagnostics.",
+    )
+    p.add_argument(
+        "--diagnostics-dir",
+        default="evaluation_runs/assembly_diagnostics",
+        help="Output root (driver adds a per-problem directory).",
+    )
+    p.add_argument(
+        "--diagnostics-trace-envs",
+        default="0",
+        help="Comma-separated env ids with compact control-rate NPZ traces; empty disables traces.",
+    )
+    p.add_argument(
+        "--diagnostics-max-run-size-mb",
+        type=float,
+        default=100.0,
+        help="Upper bound for compressed traces; JSON summaries and events remain sparse.",
+    )
+    p.add_argument("--diagnostics-contact-threshold", type=float, default=0.5)
+    p.add_argument("--diagnostics-high-force-threshold", type=float, default=50.0)
+    p.add_argument("--diagnostics-anomalous-force-threshold", type=float, default=500.0)
+    p.add_argument("--diagnostics-anomalous-impulse-threshold", type=float, default=100.0)
+    p.add_argument("--diagnostics-max-contact-points-per-env", type=int, default=512)
     p.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     return p
 
 
 def main() -> int:
-    args = _build_parser().parse_args()
+    parser = _build_parser()
+    args = parser.parse_args()
+    if args.diagnostics and args.num_envs > 64:
+        parser.error("--diagnostics is evaluation-only and supports at most 64 environments")
     if args.worker:
         return run_worker(args)
     return run_driver(args)

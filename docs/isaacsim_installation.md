@@ -1,61 +1,35 @@
 # Isaac Sim (Isaac Lab) installation
 
-Play2Perfect runs in Isaac Sim via Isaac Lab. It requires **Python 3.11** (Isaac Sim 5.x / Isaac Lab 2.3.x requirement) and lives in a dedicated venv at `.venv_isaacsim/`.
+Play2Perfect runs in Isaac Sim via Isaac Lab. The reproducible environment is managed by
+Pixi and lives in `.pixi/`.
 
 ## Prerequisites
 
-- Python 3.11
-- NVIDIA GPU with driver >= 525.60
-- CUDA 12+
-- `uv` for package management ([install instructions](https://docs.astral.sh/uv/getting-started/installation/))
+- A recent NVIDIA driver with CUDA 12.8 support (tested with 580.95.05)
+- [Pixi](https://pixi.sh/)
 
 ## Install
 
 ```bash
-uv venv .venv_isaacsim --python 3.11
-
-# PyTorch for CUDA 12.6 (Isaac Sim 5.x is built against this)
-uv pip install --python .venv_isaacsim/bin/python torch --index-url https://download.pytorch.org/whl/cu126
-
-# Vendored rl_games (PPO + SAPG)
-uv pip install --python .venv_isaacsim/bin/python -e ./rl_games/
-
-# Inference / tooling deps
-uv pip install --python .venv_isaacsim/bin/python \
-  omegaconf hydra-core "gym==0.23.1" scipy numpy yourdfpy trimesh viser \
-  requests tqdm tyro huggingface_hub "imageio[ffmpeg]" wandb termcolor
-
-# Isaac Lab + Isaac Sim (~15 GB download; first launch builds RTX shaders, ~2-5 min)
-uv pip install --python .venv_isaacsim/bin/python \
-  "isaaclab[isaacsim,all]==2.3.2.post1" --extra-index-url https://pypi.nvidia.com
-
-# typing_extensions fix: install AFTER isaaclab so it wins the resolution
-# (tyro CLIs need NoExtraItems from typing_extensions>=4.13; isaaclab pulls 4.12.2).
-uv pip install --python .venv_isaacsim/bin/python "typing_extensions>=4.13"
-
-# Register repo-local packages (isaacsimenvs, evaluation, deployment)
-uv pip install --python .venv_isaacsim/bin/python -e . --no-deps
+pixi install --locked
 ```
 
-`--no-deps` on the last line is required so the repo packages install cleanly without
-re-resolving the heavy Isaac Sim stack.
-
-Keep the version pins exact (`isaaclab==2.3.2.post1`, torch 2.7.x+cu126) — newer Isaac Lab
-releases change `DirectRLEnv` / `UrdfConverter` APIs that `isaacsimenvs` depends on.
+The lock file pins Python 3.11, Isaac Lab 2.3.2.post1, Isaac Sim 5.1, and
+PyTorch 2.7.0+cu128. The local project and vendored `rl_games` package are installed in
+editable mode. Keep these pins exact: newer Isaac Lab releases change APIs used by
+`isaacsimenvs`.
 
 Verify:
 
 ```bash
-.venv_isaacsim/bin/python -c "
-import torch, isaaclab, isaacsimenvs
-print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())
-print('isaaclab:', isaaclab.__file__)
-"
+pixi run verify
+pixi run smoke-test
 ```
 
 ## Running
 
-Non-interactive launches need the EULA env var:
+The Pixi verification tasks set the EULA variable themselves. Other non-interactive
+launches need it explicitly:
 
 ```bash
 export OMNI_KIT_ACCEPT_EULA=YES

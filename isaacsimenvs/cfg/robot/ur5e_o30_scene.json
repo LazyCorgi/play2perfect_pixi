@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "robot": {
+    "base_pose": {
+      "position": [0.0, 0.418, 0.0],
+      "rotation_wxyz": [1.0, 0.0, 0.0, 0.0]
+    },
+    "joint_positions": {
+      "shoulder_pan_joint": 1.5080126535959464,
+      "shoulder_lift_joint": -0.6052352985178681,
+      "elbow_joint": -1.4034392478161284,
+      "wrist_1_joint": -4.306915475615747,
+      "wrist_2_joint": -1.6335215572162032,
+      "wrist_3_joint": 3.089,
+      "thumb_cmc_roll": 0.0,
+      "thumb_cmc_yaw": 0.0,
+      "thumb_mcp": 0.0,
+      "thumb_ip": 0.0,
+      "index_mcp_roll": 0.0,
+      "index_mcp_pitch": 0.0,
+      "index_pip": 0.0,
+      "index_dip": 0.0,
+      "middle_mcp_roll": 0.0,
+      "middle_mcp_pitch": 0.0,
+      "middle_pip": 0.0,
+      "middle_dip": 0.0,
+      "ring_mcp_roll": 0.0,
+      "ring_mcp_pitch": 0.0,
+      "ring_pip": 0.0,
+      "ring_dip": 0.0,
+      "pinky_mcp_roll": 0.0,
+      "pinky_mcp_pitch": 0.0,
+      "pinky_pip": 0.0,
+      "pinky_dip": 0.0
+    }
+  },
+  "table": {
+    "position": [0.0, 0.0, 0.38],
+    "rotation_wxyz": [1.0, 0.0, 0.0, 0.0]
+  },
+  "hole": {
+    "position": [-0.05, 0.08, 0.53],
+    "rotation_wxyz": [1.0, 0.0, 0.0, 0.0]
+  },
+  "peg": {
+    "position": [0.135, 0.08, 0.54],
+    "rotation_wxyz": [1.0, 0.0, 0.0, 0.0]
+  }
+}

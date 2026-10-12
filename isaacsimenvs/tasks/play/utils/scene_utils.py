@@ -1367,6 +1367,7 @@ def _bake_usd(
     props: dict | None = None,
     apply_physx_articulation: bool = False,
     collision_enabled: bool | None = None,
+    activate_contact_report: bool = False,
 ) -> str:
     """Copy raw USD into bake_root/baked_subdir and pre-author physics props.
 
@@ -1415,6 +1416,9 @@ def _bake_usd(
         is_art = prim.HasAPI(UsdPhysics.ArticulationRootAPI)
         if is_rb:
             PhysxSchema.PhysxRigidBodyAPI.Apply(prim)
+            if activate_contact_report:
+                report = PhysxSchema.PhysxContactReportAPI.Apply(prim)
+                report.CreateThresholdAttr().Set(0.0)
         if is_art and apply_physx_articulation:
             PhysxSchema.PhysxArticulationAPI.Apply(prim)
         for key, val in props.items():

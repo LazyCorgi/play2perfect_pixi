@@ -52,8 +52,17 @@ play2perfect/
 
 ## Installation
 
-See [docs/isaacsim_installation.md](docs/isaacsim_installation.md) for the full Isaac Sim /
-Isaac Lab setup (Python 3.11, `.venv_isaacsim`).
+Prerequisites: Linux x86-64, a recent NVIDIA driver with CUDA 12.8 support, and
+[Pixi](https://pixi.sh/).
+
+```bash
+pixi install --locked
+pixi run verify
+pixi run smoke-test
+```
+
+The first install downloads Isaac Sim and requires roughly 20 GB of disk space. See
+[docs/isaacsim_installation.md](docs/isaacsim_installation.md) for details and troubleshooting.
 
 ## Quick start
 
@@ -61,20 +70,20 @@ Isaac Lab setup (Python 3.11, `.venv_isaacsim`).
 
 ```bash
 # Stage-1 play policy + the 4 finetuned assembly policies
-python download_checkpoints.py
+pixi run python download_checkpoints.py
 ```
 
 ### 2. Interactive evaluation (viser)
 
 ```bash
 # One problem from a single checkpoint
-python evaluation/eval_isaacsim.py \
+pixi run python evaluation/eval_isaacsim.py \
   --checkpoint-path pretrained_assembly/tight_insertion/model.pth \
   --problem tight_insertion \
   --port 8044
 
 # ...or load all four downloaded policies and switch between them in the GUI
-python evaluation/eval_isaacsim.py --policies-dir pretrained_assembly --port 8044
+pixi run python evaluation/eval_isaacsim.py --policies-dir pretrained_assembly --port 8044
 ```
 
 Open `http://localhost:8044` in a browser to watch the policy roll out the insertion.
@@ -85,13 +94,13 @@ Headless, batched eval that scores each problem over many parallel envs (one
 i.i.d. first-episode trial per env) and prints a success-rate table:
 
 ```bash
-python evaluation/eval_offline.py --policies-dir pretrained_assembly
+pixi run python evaluation/eval_offline.py --policies-dir pretrained_assembly
 ```
 
 ### 3. Train Stage 1 (play)
 
 ```bash
-python isaacsimenvs/train.py \
+pixi run python isaacsimenvs/train.py \
   --task Isaacsimenvs-Play-Direct-v0 \
   --agent rl_games_cfg_entry_point \
   --headless
@@ -100,7 +109,7 @@ python isaacsimenvs/train.py \
 ### 4. Finetune Stage 2 (precise assembly)
 
 ```bash
-python isaacsimenvs/train.py \
+pixi run python isaacsimenvs/train.py \
   --task Isaacsimenvs-PreciseAssembly-Direct-v0 \
   --agent rl_games_cfg_entry_point \
   --checkpoint pretrained_policy/model.pth \

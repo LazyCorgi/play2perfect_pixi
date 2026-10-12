@@ -79,6 +79,12 @@ class PreciseAssemblyCfg:
     dropped_on_table_z_margin: float = 0.05
     dropped_on_table_ft_distance: float = 0.15
 
+    # Evaluation-only switch.  When enabled, scene setup authors PhysX contact
+    # reporters on the object, fixture, and table so an external diagnostics
+    # sampler can create pair-filtered contact views.  It does not add anything
+    # to policy/critic observations or change rewards and remains off for train.
+    enable_diagnostics_contact_reporting: bool = False
+
 
 def _default_precise_assembly_sim_cfg() -> SimulationCfg:
     """Return a render-overlay-compatible sim cfg for teacher and student tasks."""

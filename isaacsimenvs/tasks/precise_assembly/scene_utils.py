@@ -51,6 +51,9 @@ def _pih_rigid_object_cfg(prim_path: str, usd_path: str) -> RigidObjectCfg:
 def setup_scene(env) -> None:
     """Build robot, narrow table, dynamic hole fixture, object, goal, and light."""
     assets_cfg = env.cfg.assets
+    diagnostics_contacts = bool(
+        env.cfg.precise_assembly.enable_diagnostics_contact_reporting
+    )
     setup_t0 = time.perf_counter()
     _log_scene_step(setup_t0, f"peg-in-hole setup start num_envs={env.num_envs}")
 
@@ -78,6 +81,7 @@ def setup_scene(env) -> None:
             rb_solver_velocity_iterations=0,
             articulation_enabled=False,
         ),
+        activate_contact_report=diagnostics_contacts,
     )
     goalviz_usd_path = _bake_usd(
         object_raw_usd,
@@ -108,6 +112,7 @@ def setup_scene(env) -> None:
             rb_solver_position_iterations=4,
             rb_solver_velocity_iterations=0,
         ),
+        activate_contact_report=diagnostics_contacts,
     )
 
     robot_usd_path = _bake_usd(
@@ -142,6 +147,7 @@ def setup_scene(env) -> None:
             disable_gravity=True,
             articulation_enabled=False,
         ),
+        activate_contact_report=diagnostics_contacts,
     )
     _log_scene_step(setup_t0, "converted object/hole/table URDFs")
 

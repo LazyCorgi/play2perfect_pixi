@@ -371,7 +371,6 @@ class PegDynamicDemo:
         self._table_wood = self.server.scene.add_box(
             "/table/wood", color=(180, 130, 70),
             dimensions=self._table_base_dims, position=(0, 0, 0),
-            side="double", opacity=0.9,
         )
 
     def _update_table_viz(
@@ -396,7 +395,6 @@ class PegDynamicDemo:
         self._table_wood = self.server.scene.add_box(
             "/table/wood", color=(180, 130, 70),
             dimensions=(bx * sx, by * sy, bz), position=(0, 0, 0),
-            side="double", opacity=0.9,
         )
 
     def _update_table_pose(
@@ -442,7 +440,6 @@ class PegDynamicDemo:
         return self.server.scene.add_mesh_simple(
             f"{node_name}/mesh", vertices=verts, faces=faces,
             color=rgb, opacity=opacity, side="double",
-            cast_shadow=False, receive_shadow=False,
         )
 
     def _set_viz_visible(self, viz, visible):
@@ -531,7 +528,7 @@ class PegDynamicDemo:
                 self.server.scene.add_icosphere(f"/obj_kp/{i}", radius=0.005, color=(255, 0, 0))
             )
             self._goal_keypoints.append(
-                self.server.scene.add_icosphere(f"/goal_kp/{i}", radius=0.005, color=(0, 255, 0), opacity=0.5)
+                self.server.scene.add_icosphere(f"/goal_kp/{i}", radius=0.005, color=(0, 255, 0))
             )
         self._apply_keypoint_visibility()
 
@@ -584,10 +581,12 @@ class PegDynamicDemo:
             tv_max = np.array(TARGET_VOLUME_MAXS)
             center = (tv_min + tv_max) / 2
             dims = tv_max - tv_min
-            self._target_vol_box = self.server.scene.add_box(
+            mesh = trimesh.creation.box(extents=dims)
+            self._target_vol_box = self.server.scene.add_mesh_simple(
                 "/target_volume",
+                vertices=np.asarray(mesh.vertices),
+                faces=np.asarray(mesh.faces),
                 color=(100, 255, 100),
-                dimensions=tuple(dims.tolist()),
                 position=tuple(center.tolist()),
                 side="double",
                 opacity=0.08,
@@ -825,4 +824,3 @@ class PegDynamicDemo:
         except KeyboardInterrupt:
             print("\n[launcher] Shutting down...")
             self._kill_subprocess()
-
