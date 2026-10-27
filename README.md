@@ -1,5 +1,7 @@
 # Play2Perfect
 
+本地半尺寸迁移实验已于 2026-10-27 [归档](archives/2026-10-27_half_scale/README.md)。下一轮逐步缩小工作请先读 [HANDOFF.md](HANDOFF.md)。
+
 ### What Matters in Dexterous Play Pretraining for Precise Assembly?
 
 Official code release for **Play2Perfect**, a 2-stage reinforcement-learning pipeline for
@@ -118,6 +120,11 @@ pixi run python isaacsimenvs/train.py \
 ```
 
 ## Deployment
+
+For the experimental **half-size insertion** task on the original KUKA + SHARPA,
+see [the run guide and initial results](docs/half_scale_insertion.md) and
+[the fine-tuning experiment report](docs/half_scale_finetuning_report.md).
+The original task remains available as the regression baseline.
 
 See [docs/deployment.md](docs/deployment.md) for the minimal sim-to-real reference.
 

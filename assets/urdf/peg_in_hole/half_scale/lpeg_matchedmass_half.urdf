@@ -1,0 +1,39 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="lpeg_matchedmass_half">
+  <material name="peg_red">
+    <color rgba="0.8000 0.1569 0.1569 1.0" />
+  </material>
+  <link name="lpeg_matchedmass">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.125 0.015 0.01" />
+      </geometry>
+      <material name="peg_red" />
+    </visual>
+    <visual>
+      <origin xyz="0.0575 0.0125 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.01 0.04 0.01" />
+      </geometry>
+      <material name="peg_red" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.125 0.015 0.01" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.0575 0.0125 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.01 0.04 0.01" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.007225" />
+      <origin xyz="0.01011 0.002198 0" rpy="0 0 0" />
+      <inertia ixx="5.046875e-07" ixy="-7.525e-07" ixz="0" iyy="1.1284375e-05" iyz="0" izz="1.166875e-05" />
+    </inertial>
+  </link>
+</robot>

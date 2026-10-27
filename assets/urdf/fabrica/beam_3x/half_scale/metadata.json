@@ -1,0 +1,8 @@
+{
+  "problem": "beam_assembly_step1_half",
+  "source_problem": "beam_assembly_step1",
+  "linear_scale": 0.5,
+  "mass_scale": 0.125,
+  "inertia_scale": 0.03125,
+  "mass_assumption": "constant density; hardware not validated"
+}

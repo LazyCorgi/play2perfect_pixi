@@ -35,6 +35,8 @@ from typing import Iterable
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+from evaluation.problem_presets import default_goal_mode, default_tolerances, task_for_problem
+
 DEFAULT_TASK = "Isaacsimenvs-PreciseAssembly-Direct-v0"
 DEFAULT_AGENT = "rl_games_sapg_cfg_entry_point"
 DEFAULT_PROBLEM = "tight_insertion"
@@ -496,6 +498,7 @@ def sim_worker(
     sdf: bool,
     keep_dr: bool,
     extra_overrides: dict[str, object],
+    policy_coefficient_id: float = 50.0,
 ) -> None:
     app = None
     env = None
@@ -517,6 +520,7 @@ def sim_worker(
         from isaacsimenvs.utils.rlgames_utils import register_rlgames_env
         from rl_games.torch_runner import Runner, _load_checkpoint_weights
 
+        task = task_for_problem(problem, task)
         cfg = _load_env_cfg(task)
         _apply_env_overrides(
             cfg,
@@ -554,6 +558,8 @@ def sim_worker(
         player = runner.create_player()
         weights = _load_checkpoint_weights(player, str(checkpoint_path))
         player.set_weights(weights)
+        from evaluation.policy_evaluation import use_evaluation_policy
+        use_evaluation_policy(player, policy_coefficient_id)
         print(f"=> initialized player weights from '{checkpoint_path}'", flush=True)
         player.has_batch_dimension = True
 
@@ -621,6 +627,7 @@ def _worker_main(args) -> int:
         sdf=args.sdf,
         keep_dr=args.keep_dr,
         extra_overrides=extra_overrides,
+        policy_coefficient_id=args.policy_coefficient_id,
     )
     return 0
 
@@ -639,12 +646,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--initial-policy", default=None)
     parser.add_argument("--checkpoint-path", default=None)
     parser.add_argument("--problem", default=None)
-    parser.add_argument("--goal-mode", choices=GOAL_MODES, default="preInsertAndFinal")
+    parser.add_argument("--goal-mode", choices=GOAL_MODES, default=None)
     parser.add_argument("--num-envs", type=int, default=1)
+    parser.add_argument("--policy-coefficient-id", type=float, choices=[0, 10, 20, 30, 40, 50], default=50)
     parser.add_argument("--games", type=int, default=100000)
     parser.add_argument("--random-goal-fraction", type=float, default=0.0)
-    parser.add_argument("--insertion-success-tolerance", type=float, default=0.01)
-    parser.add_argument("--retract-success-tolerance", type=float, default=0.005)
+    parser.add_argument("--insertion-success-tolerance", type=float, default=None)
+    parser.add_argument("--retract-success-tolerance", type=float, default=None)
     parser.add_argument("--eval-success-tolerance", type=float, default=None)
     parser.add_argument("--sdf", action="store_true")
     parser.add_argument("--keep-dr", action="store_true")
@@ -746,8 +754,18 @@ def _run_viewer(args) -> int:
             self.sdf = bool(args.sdf)
             self.keep_dr = bool(args.keep_dr)
             super().__init__(*demo_args, **demo_kwargs)
-            self._sl_insertion_tol.value = float(args.insertion_success_tolerance)
-            self._sl_retract_tol.value = float(args.retract_success_tolerance)
+            def set_problem_tolerances():
+                insertion, retract = default_tolerances(self._dd_problem.value)
+                if args.goal_mode is None:
+                    self._dd_goal_mode.value = default_goal_mode(self._dd_problem.value)
+                self._sl_insertion_tol.value = float(args.insertion_success_tolerance if args.insertion_success_tolerance is not None else insertion)
+                self._sl_retract_tol.value = float(args.retract_success_tolerance if args.retract_success_tolerance is not None else retract)
+
+            set_problem_tolerances()
+
+            @self._dd_problem.on_update
+            def _(_event):
+                set_problem_tolerances()
 
         def _load_env(self):
             problem_name = self._dd_problem.value
@@ -821,6 +839,8 @@ def _run_viewer(args) -> int:
                 goal_mode,
                 "--num-envs",
                 str(self.num_envs),
+                "--policy-coefficient-id",
+                str(args.policy_coefficient_id),
                 "--games",
                 str(self.games),
                 "--random-goal-fraction",
@@ -900,7 +920,7 @@ def _run_viewer(args) -> int:
         policies=viewer_policies,
         port=args.port,
         headless=not args.no_headless,
-        goal_mode=args.goal_mode,
+        goal_mode=args.goal_mode or default_goal_mode(initial_problem),
         random_goal_fraction=args.random_goal_fraction,
         initial_policy=selected_policy.name,
         extra_overrides=extra_overrides,

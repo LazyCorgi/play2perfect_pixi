@@ -1,0 +1,18 @@
+{
+  "problem": "tight_insertion_half",
+  "source_problem": "tight_insertion",
+  "linear_scale": 0.5,
+  "mass_scale": 0.125,
+  "inertia_scale": 0.03125,
+  "mass_assumption": "constant density; validate against manufactured parts before deployment",
+  "nominal_side_clearance_m": 0.00025,
+  "grasp_box_policy_scale": [
+    3.125,
+    0.375,
+    0.25
+  ],
+  "source_sha256": {
+    "assets/urdf/peg_in_hole/lpeg_matchedmass/lpeg_matchedmass.urdf": "f5a7ba576e235d5f5326140f36075658a03bbe6ee57a84cb1cecf27f799071f3",
+    "assets/urdf/peg_in_hole/holes/hole_tol0p5mm/hole_tol0p5mm.urdf": "6848b2d756a84b0b1b1d6ea56227c2322ef3ef06546abc48433cd036e6e650bc"
+  }
+}

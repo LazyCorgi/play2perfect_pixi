@@ -163,3 +163,50 @@ _branded = {
 }
 PROBLEM_REGISTRY.clear()
 PROBLEM_REGISTRY.update(_branded)
+
+# Experimental variants are independent of the published baseline assets.
+_original_insertion = PROBLEM_REGISTRY["tight_insertion"]
+PROBLEM_REGISTRY["tight_insertion_half"] = _dc.replace(
+    _original_insertion,
+    name="tight_insertion_half",
+    insertion_object_name="lpeg_matchedmass_half",
+    receptive_urdf="urdf/peg_in_hole/half_scale/hole_tol0p25mm.urdf",
+    insert_pose_rel_receptive=tuple(
+        tuple(0.5 * v for v in pose[:3]) + pose[3:]
+        for pose in _original_insertion.insert_pose_rel_receptive
+    ),
+    hole_z_offset=0.5 * _original_insertion.hole_z_offset,
+    pre_insert_offset=0.5 * _original_insertion.pre_insert_offset,
+    prelude_lift_offset=0.5 * _original_insertion.prelude_lift_offset,
+)
+PROBLEM_REGISTRY["tight_insertion_half_original_mass"] = _dc.replace(
+    PROBLEM_REGISTRY["tight_insertion_half"],
+    name="tight_insertion_half_original_mass",
+    insertion_object_name="lpeg_matchedmass_half_original_mass",
+)
+PROBLEM_REGISTRY["tight_insertion_075"] = _dc.replace(
+    _original_insertion, name="tight_insertion_075", insertion_object_name="lpeg_075",
+    receptive_urdf="urdf/peg_in_hole/scale_075/hole_075.urdf",
+    insert_pose_rel_receptive=tuple(tuple(v * .75 for v in p[:3]) + p[3:] for p in _original_insertion.insert_pose_rel_receptive),
+    hole_z_offset=_original_insertion.hole_z_offset * .75,
+    pre_insert_offset=_original_insertion.pre_insert_offset * .75,
+    prelude_lift_offset=_original_insertion.prelude_lift_offset * .75,
+)
+
+from evaluation.objects import NAME_TO_OBJECT as _objects, Object as _Object, get_repo_root_dir as _repo_root
+
+_beam = PROBLEM_REGISTRY["beam_assembly_step1"]
+_beam_object = _objects[_beam.insertion_object_name]
+_objects["beam_step1_half"] = _Object(
+    urdf_path=_repo_root() / "assets/urdf/fabrica/beam_3x/half_scale/beam_step1_half.urdf",
+    scale=tuple(v * .5 for v in _beam_object.scale),
+    need_vhacd=False,
+)
+PROBLEM_REGISTRY["beam_assembly_step1_half"] = _dc.replace(
+    _beam, name="beam_assembly_step1_half", insertion_object_name="beam_step1_half",
+    receptive_urdf="urdf/fabrica/beam_3x/half_scale/beam_step1_fixture_half.urdf",
+    insert_pose_rel_receptive=tuple(tuple(v * .5 for v in p[:3]) + p[3:] for p in _beam.insert_pose_rel_receptive),
+    hole_z_offset=_beam.hole_z_offset * .5,
+    pre_insert_offset=_beam.pre_insert_offset * .5,
+    prelude_lift_offset=_beam.prelude_lift_offset * .5,
+)

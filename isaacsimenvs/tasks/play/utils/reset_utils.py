@@ -299,6 +299,9 @@ def _reset_object_pose(env, env_ids: torch.Tensor) -> None:
     )
 
     env._object_init_z[env_ids] = pos_local[:, 2]
+    if not hasattr(env, "_object_min_z"):
+        env._object_min_z = env._object_init_z.clone()
+    env._object_min_z[env_ids] = pos_local[:, 2]
 
 
 def _reset_goal_pose(env, env_ids: torch.Tensor, mode: str) -> None:

@@ -118,6 +118,7 @@ def _load_mesh_for_viz(asset_path: Path) -> trimesh.Trimesh:
                 if not mesh_file.exists():
                     continue
                 m = trimesh.load(str(mesh_file), force="mesh")
+                m.apply_scale([float(v) for v in mesh_elem.get("scale", "1 1 1").split()])
             else:
                 continue
             m.apply_transform(link_T @ local_T)
@@ -288,11 +289,11 @@ class PegDynamicDemo:
                 initial_value=self.random_goal_fraction,
             )
             self._sl_insertion_tol = self.server.gui.add_slider(
-                "Insertion tol (m)", min=0.001, max=0.02, step=0.001,
+                "Insertion tol (m)", min=0.001, max=0.02, step=0.0005,
                 initial_value=DEFAULT_INSERTION_SUCCESS_TOLERANCE,
             )
             self._sl_retract_tol = self.server.gui.add_slider(
-                "Retract tol (m)", min=0.001, max=0.01, step=0.001,
+                "Retract tol (m)", min=0.001, max=0.01, step=0.0005,
                 initial_value=DEFAULT_RETRACT_SUCCESS_TOLERANCE,
             )
             self._btn_load = self.server.gui.add_button("Load / reload env")

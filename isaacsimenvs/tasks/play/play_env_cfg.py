@@ -336,6 +336,7 @@ class RewardCfg:
     lifting_rew_scale: float = 20.0
     lifting_bonus: float = 300.0
     lifting_bonus_threshold: float = 0.15
+    use_minimum_height_reference: bool = False
 
     distance_delta_rew_scale: float = 50.0
     reach_goal_bonus: float = 1000.0

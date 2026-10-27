@@ -37,3 +37,26 @@ gym.register(
         "rl_games_sapg_cfg_entry_point": str(_CFG_DIR / "train" / "PreciseAssemblySAPG.yaml"),
     },
 )
+
+gym.register(
+    id="Isaacsimenvs-PreciseAssemblyHalf-Direct-v0",
+    entry_point="isaacsimenvs.tasks.precise_assembly.precise_assembly_env:PreciseAssemblyEnv",
+    order_enforce=False,
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "isaacsimenvs.tasks.precise_assembly.precise_assembly_env_cfg:PreciseAssemblyEnvCfg",
+        "env_cfg_yaml_entry_point": str(_CFG_DIR / "task" / "PreciseAssemblyHalf.yaml"),
+        "rl_games_sapg_cfg_entry_point": str(_CFG_DIR / "train" / "PreciseAssemblyHalfSAPG.yaml"),
+    },
+)
+
+gym.register(
+    id="Isaacsimenvs-PreciseAssembly075-Direct-v0",
+    entry_point="isaacsimenvs.tasks.precise_assembly.precise_assembly_env:PreciseAssemblyEnv",
+    order_enforce=False, disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "isaacsimenvs.tasks.precise_assembly.precise_assembly_env_cfg:PreciseAssemblyEnvCfg",
+        "env_cfg_yaml_entry_point": str(_CFG_DIR / "task" / "PreciseAssembly075.yaml"),
+        "rl_games_sapg_cfg_entry_point": str(_CFG_DIR / "train" / "PreciseAssemblyHalfSAPG.yaml"),
+    },
+)
