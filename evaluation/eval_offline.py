@@ -83,10 +83,7 @@ def run_worker(args) -> int:
         _load_env_cfg,
     )
 
-    result = {"problem": args.problem, "checkpoint": args.checkpoint_path, "seed": args.seed,
-              "goal_mode": args.goal_mode, "min_episode_steps": args.min_episode_steps,
-              "insertion_success_tolerance": args.insertion_success_tolerance,
-              "retract_success_tolerance": args.retract_success_tolerance}
+    result = {"problem": args.problem, "checkpoint": args.checkpoint_path, "seed": args.seed}
     env = None
     diagnostics = None
     try:
@@ -95,7 +92,11 @@ def run_worker(args) -> int:
         cfg.seed = args.seed
         if args.episode_length_s is not None:
             cfg.episode_length_s = args.episode_length_s
-        result["episode_length_s"] = cfg.episode_length_s
+        result.update(episode_length_s=cfg.episode_length_s, goal_mode=args.goal_mode,
+                      goal_xy_obs_noise=cfg.precise_assembly.goal_xy_obs_noise,
+                      insertion_success_tolerance=args.insertion_success_tolerance,
+                      retract_success_tolerance=args.retract_success_tolerance,
+                      min_episode_steps=args.min_episode_steps)
         _apply_env_overrides(
             cfg,
             problem=args.problem,
@@ -145,8 +146,6 @@ def run_worker(args) -> int:
             games=10**9,
             extra_overrides={},
         )
-        # Runner.load seeds global RNGs. Do not reset a requested held-out seed
-        # back to the training YAML's default 42 immediately before env_reset.
         agent_cfg["params"]["seed"] = args.seed
         clip_obs = float(agent_cfg["params"]["env"].get("clip_observations", _math.inf))
         clip_actions = float(agent_cfg["params"]["env"].get("clip_actions", _math.inf))
@@ -166,19 +165,9 @@ def run_worker(args) -> int:
 
         player.reset()
         obs = player.env_reset(wrapped)
-        result["initial_object_pose_env0"] = (
-            env.object.data.root_state_w[0, :7].detach().cpu().tolist()
-        )
 
         if args.diagnostics:
             from evaluation.assembly_diagnostics import AssemblyDiagnostics, parse_trace_envs
-            from evaluation.initial_scenes import save_initial_scenes
-
-            save_initial_scenes(
-                env, Path(args.diagnostics_dir) / 'initial_scenes.json',
-                seed=args.seed, checkpoint=args.checkpoint_path,
-                policy_id=args.policy_coefficient_id,
-            )
 
             diagnostics = AssemblyDiagnostics(
                 env,
@@ -207,58 +196,8 @@ def run_worker(args) -> int:
         first_retract = torch.zeros(n, dtype=torch.bool, device=dev)
         has_retract = hasattr(env, "retract_succeeded")
 
-        input_ids = ()
-        input_rows, input_valid = [], []
-        if args.policy_input_envs:
-            from evaluation.assembly_diagnostics import parse_trace_envs
-            from isaacsimenvs.tasks.play.utils.obs_utils import OBS_FIELD_SIZES
-            input_ids = parse_trace_envs(args.policy_input_envs, n)
-            input_metadata = {
-                'fields': [(name, OBS_FIELD_SIZES[name]) for name in cfg.obs.obs_list],
-                'semantics': 'actual actor observation immediately before get_action; before checkpoint running-mean normalization; no camera images',
-                'control_dt_s': float(cfg.decimation * cfg.sim.dt),
-                'problem': args.problem, 'seed': args.seed,
-                'goal_pos_obs_noise': env.goal_pos_obs_noise[list(input_ids)].detach().cpu().tolist(),
-                'goal_yaw_obs_noise': env.goal_yaw_obs_noise[list(input_ids)].detach().cpu().tolist(),
-            }
-
         step = 0
-        geometry = None
-        if args.problem in ("tight_insertion", "tight_insertion_half", "tight_insertion_half_original_mass", "tight_insertion_075"):
-            import numpy as np
-            from scipy.spatial.transform import Rotation
-            from evaluation.peg_insertion_geometry import PegInsertionGeometry
-
-            geometry = PegInsertionGeometry(
-                Path(env._pih_object_urdf_abs), Path(env._pih_receptive_urdf_abs),
-                env._pih_insert_pose_sequence[-1],
-            )
-            geometry_streak = np.zeros(n, dtype=int)
-            geometry_reached = np.zeros(n, dtype=bool)
-            geometry_best = [None] * n
-
         while step < args.steps and not bool(done_once.all()):
-            if geometry is not None:
-                # Sample before stepping: auto-reset replaces terminal poses.
-                # Require ten consecutive sampled control states, not one
-                # transient crossing of the goal volume.
-                object_pos = (env.object.data.root_pos_w - env.scene.env_origins).detach().cpu().numpy()
-                object_q = env.object.data.root_quat_w.detach().cpu().numpy()[:, [1, 2, 3, 0]]
-                fixture_pos = env.hole_pos.detach().cpu().numpy()
-                fixture_q = env.hole_quat_wxyz.detach().cpu().numpy()[:, [1, 2, 3, 0]]
-                fixture_rot = Rotation.from_quat(fixture_q).inv()
-                local_pos = fixture_rot.apply(object_pos - fixture_pos)
-                local_q = (fixture_rot * Rotation.from_quat(object_q)).as_quat()
-                for env_id in np.flatnonzero(~done_once.detach().cpu().numpy()):
-                    metrics = geometry.evaluate(np.concatenate((local_pos[env_id], local_q[env_id])))
-                    if geometry_best[env_id] is None or metrics["position_error_m"] < geometry_best[env_id]["position_error_m"]:
-                        geometry_best[env_id] = metrics
-                    geometry_streak[env_id] = geometry_streak[env_id] + 1 if metrics["seated"] else 0
-                    geometry_reached[env_id] |= geometry_streak[env_id] >= 10
-            if input_ids:
-                actor_obs = obs['obs'] if isinstance(obs, dict) else obs
-                input_rows.append(actor_obs[list(input_ids)].detach().cpu().numpy().copy())
-                input_valid.append((~done_once[list(input_ids)]).detach().cpu().numpy().copy())
             action = player.get_action(obs, is_deterministic=True)
             if diagnostics is not None:
                 diagnostics.set_policy_action(action)
@@ -341,41 +280,6 @@ def run_worker(args) -> int:
             mean_goal_ratio=(float(first_ratio[valid].mean().item()) if nv else 0.0),
             retract_rate=(float(first_retract[valid].float().mean().item()) if (has_retract and nv) else None),
         )
-        result["object_physics"] = {
-            "mass_kg": float(env.object.data.default_mass[0, 0].cpu()),
-            "inertia_kg_m2": env.object.data.default_inertia[0].cpu().tolist(),
-        }
-        if input_ids and input_rows:
-            import numpy as np
-            base_width = sum(size for _, size in input_metadata['fields'])
-            condition_width = input_rows[0].shape[-1] - base_width
-            if condition_width:
-                input_metadata['fields'].append(('sapg_condition', condition_width))
-            input_metadata['environment_observation_dim'] = base_width
-            input_metadata['player_input_dim'] = input_rows[0].shape[-1]
-            input_path = Path(args.diagnostics_dir) / 'policy_inputs.npz'
-            np.savez_compressed(input_path, observations=np.stack(input_rows),
-                                first_episode_valid=np.stack(input_valid),
-                                env_ids=np.asarray(input_ids),
-                                metadata=np.asarray(json.dumps(input_metadata)))
-            result['policy_input_trace'] = str(input_path)
-        if geometry is not None:
-            result["geometry_seated_10_steps_rate_all_envs"] = float(geometry_reached.mean())
-            result["geometry_seated_and_task_success_count_all_envs"] = int(
-                (geometry_reached & first_retract.detach().cpu().numpy()).sum()
-            )
-            result["geometry_audit"] = {
-                "definition": "rigid-box nonpenetration and seated pose for 10 consecutive control states",
-                "max_box_overlap_m": 0.00005, "seating_tolerance_m": 0.001,
-                "angle_tolerance_deg": 2.0,
-                "not_verified": "force, frictional stability, elastic deformation and real-world fit",
-                "per_env": [{"env_id": i, "seated_10_steps": bool(geometry_reached[i]),
-                             "closest_pose_metrics": geometry_best[i]} for i in range(n)],
-            }
-            if args.diagnostics:
-                (Path(args.diagnostics_dir) / "geometry_audit.json").write_text(
-                    json.dumps(result["geometry_audit"], indent=2) + "\n"
-                )
         print(_RESULT_PREFIX + json.dumps(result), flush=True)
     finally:
         try:
@@ -411,9 +315,7 @@ def run_driver(args) -> int:
     rows = []
     worker_failed = False
     for problem in problems:
-        default_insertion, default_retract = default_tolerances(problem)
-        insertion_tol = args.insertion_success_tolerance if args.insertion_success_tolerance is not None else default_insertion
-        retract_tol = args.retract_success_tolerance if args.retract_success_tolerance is not None else default_retract
+        insertion, retract = default_tolerances(problem)
         ckpt = _resolve_checkpoint(args, problem)
         if ckpt is None or not ckpt.is_file():
             print(f"[skip] {problem}: no checkpoint (looked in {args.policies_dir}/{problem}/model.pth)")
@@ -429,14 +331,16 @@ def run_driver(args) -> int:
             "--num-envs", str(args.num_envs),
             "--steps", str(args.steps),
             "--seed", str(args.seed),
-            "--policy-coefficient-id", str(args.policy_coefficient_id),
             "--min-episode-steps", str(args.min_episode_steps),
             "--rl-device", args.rl_device,
             "--sim-device", args.sim_device,
             "--goal-mode", args.goal_mode or default_goal_mode(problem),
-            "--insertion-success-tolerance", str(insertion_tol),
-            "--retract-success-tolerance", str(retract_tol),
+            "--insertion-success-tolerance", str(args.insertion_success_tolerance if args.insertion_success_tolerance is not None else insertion),
+            "--retract-success-tolerance", str(args.retract_success_tolerance if args.retract_success_tolerance is not None else retract),
         ]
+        cmd.extend(["--policy-coefficient-id", str(args.policy_coefficient_id)])
+        if args.episode_length_s is not None:
+            cmd.extend(["--episode-length-s", str(args.episode_length_s)])
         if args.diagnostics:
             diagnostics_dir = diagnostics_root / problem
             cmd.extend(
@@ -460,10 +364,6 @@ def run_driver(args) -> int:
                     ),
                 ]
             )
-        if args.episode_length_s is not None:
-            cmd.extend(["--episode-length-s", str(args.episode_length_s)])
-        if args.policy_input_envs:
-            cmd.extend(['--policy-input-envs', args.policy_input_envs])
         env = os.environ.copy()
         env.setdefault("OMNI_KIT_ACCEPT_EULA", "YES")
         print(f"\n===== evaluating {problem} =====", flush=True)
@@ -519,13 +419,12 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Max control steps; loop ends early once every env finishes episode 1. "
                         "Higher so long tasks (e.g. screwing, 10 subgoals) finish.")
     p.add_argument("--seed", type=int, default=42, help="Evaluation environment seed recorded in diagnostics metadata.")
-    p.add_argument("--policy-coefficient-id", type=float, choices=[0, 10, 20, 30, 40, 50], default=50)
-    p.add_argument('--policy-input-envs', default='', help='With --diagnostics, record actual actor vectors for these environment IDs (comma-separated).')
-    p.add_argument("--episode-length-s", type=float, default=None, help="Per-goal timeout window; goal success resets its timer. This is not a hard full-episode deadline. Report separately from the 10-second baseline.")
     p.add_argument("--min-episode-steps", type=int, default=100,
                    help="Discard first episodes that end within this many steps as unstable "
                         "inits (object fell/ungraspable at reset → impossible trial).")
-    p.add_argument("--goal-mode", choices=["preInsertAndFinal", "finalGoalOnly"], default=None)
+    p.add_argument("--policy-coefficient-id", type=float, choices=[0,10,20,30,40,50], default=50)
+    p.add_argument("--episode-length-s", type=float, default=None, help="Per-goal timeout window; successful goals reset the timer.")
+    p.add_argument("--goal-mode", default=None)
     p.add_argument("--insertion-success-tolerance", type=float, default=None)
     p.add_argument("--retract-success-tolerance", type=float, default=None)
     p.add_argument("--rl-device", default="cuda:0")
@@ -563,12 +462,10 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
-    if args.episode_length_s is not None and args.episode_length_s <= 0:
-        parser.error("--episode-length-s must be positive")
-    if args.policy_input_envs and not args.diagnostics:
-        parser.error('--policy-input-envs requires --diagnostics')
     if args.diagnostics and args.num_envs > 64:
         parser.error("--diagnostics is evaluation-only and supports at most 64 environments")
+    if args.episode_length_s is not None and args.episode_length_s <= 0:
+        parser.error("--episode-length-s must be positive")
     if args.worker:
         args.goal_mode = args.goal_mode or default_goal_mode(args.problem)
         insertion, retract = default_tolerances(args.problem)

@@ -12,10 +12,9 @@ def lifting_reward(
     lifting_bonus_threshold: float,
     lifting_bonus: float,
     lifting_rew_scale: float,
-    height_offset: float = 0.05,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Lift progress, one-shot lift bonus, and latched lifted state."""
-    z_lift = height_offset + object_z - object_init_z
+    z_lift = 0.05 + object_z - object_init_z
     lift_rew = torch.clamp(z_lift, 0.0, 0.5)
     lifted = (z_lift > lifting_bonus_threshold) | prev_lifted
     just_crossed = lifted & ~prev_lifted
@@ -97,18 +96,13 @@ def compute_rewards(env) -> torch.Tensor:
     env_origins = env.scene.env_origins
     obj_pos = env.object.data.root_pos_w - env_origins
 
-    minimum_reference = rew_cfg.use_minimum_height_reference
-    if minimum_reference:
-        env._object_min_z.copy_(torch.minimum(env._object_min_z, obj_pos[:, 2]))
-
     lift_rew, lift_bonus_rew, new_lifted = lifting_reward(
         object_z=obj_pos[:, 2],
-        object_init_z=env._object_min_z if minimum_reference else env._object_init_z,
+        object_init_z=env._object_init_z,
         prev_lifted=env._lifted_object,
-        lifting_bonus_threshold=max(0.0, rew_cfg.lifting_bonus_threshold - 0.05) if minimum_reference else rew_cfg.lifting_bonus_threshold,
+        lifting_bonus_threshold=rew_cfg.lifting_bonus_threshold,
         lifting_bonus=rew_cfg.lifting_bonus,
         lifting_rew_scale=rew_cfg.lifting_rew_scale,
-        height_offset=0.0 if minimum_reference else 0.05,
     )
     env._lifted_object = new_lifted
 

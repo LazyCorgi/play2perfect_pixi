@@ -15,21 +15,6 @@ PEG_NAME_TO_OBJECT = {
         scale=rescale_by_factor((0.25, 0.03, 0.02), factor=25),
         need_vhacd=False,
     ),
-    "lpeg_matchedmass_half": Object(
-        urdf_path=ASSETS_DIR / "half_scale" / "lpeg_matchedmass_half.urdf",
-        scale=rescale_by_factor((0.125, 0.015, 0.010), factor=25),
-        need_vhacd=False,
-    ),
-    "lpeg_matchedmass_half_original_mass": Object(
-        urdf_path=ASSETS_DIR / "half_scale" / "lpeg_matchedmass_half_original_mass.urdf",
-        scale=rescale_by_factor((0.125, 0.015, 0.010), factor=25),
-        need_vhacd=False,
-    ),
-    "lpeg_075": Object(
-        urdf_path=ASSETS_DIR / "scale_075" / "lpeg_075.urdf",
-        scale=rescale_by_factor((0.25, 0.03, 0.02), factor=25 * .75),
-        need_vhacd=False,
-    ),
 }
 
 NAME_TO_OBJECT.update(PEG_NAME_TO_OBJECT)

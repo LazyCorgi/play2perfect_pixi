@@ -1,7 +1,5 @@
 # Play2Perfect
 
-本地半尺寸迁移实验已于 2026-10-27 [归档](archives/2026-10-27_half_scale/README.md)。下一轮逐步缩小工作请先读 [HANDOFF.md](HANDOFF.md)。
-
 ### What Matters in Dexterous Play Pretraining for Precise Assembly?
 
 Official code release for **Play2Perfect**, a 2-stage reinforcement-learning pipeline for
@@ -66,6 +64,13 @@ pixi run smoke-test
 The first install downloads Isaac Sim and requires roughly 20 GB of disk space. See
 [docs/isaacsim_installation.md](docs/isaacsim_installation.md) for details and troubleshooting.
 
+## Beam step 1 at half scale
+
+See [local reproduction and delivery](docs/beam_half_reproduction.md) for the
+0.5-scale checkpoint, demo, independent evaluation, and one-command progressive
+finetuning from the official 1.0 task model. Software pins remain in `pixi.lock`;
+model artifacts are distributed separately with SHA256 manifests.
+
 ## Quick start
 
 ### 1. Download checkpoints
@@ -120,11 +125,6 @@ pixi run python isaacsimenvs/train.py \
 ```
 
 ## Deployment
-
-For the experimental **half-size insertion** task on the original KUKA + SHARPA,
-see [the run guide and initial results](docs/half_scale_insertion.md) and
-[the fine-tuning experiment report](docs/half_scale_finetuning_report.md).
-The original task remains available as the regression baseline.
 
 See [docs/deployment.md](docs/deployment.md) for the minimal sim-to-real reference.
 

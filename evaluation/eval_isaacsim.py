@@ -637,6 +637,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--port", type=int, default=8044)
+    parser.add_argument('--autoplay',action='store_true',help='Load the environment at startup and repeatedly run episodes; Stop disables autoplay.')
     parser.add_argument("--task", default=DEFAULT_TASK)
     parser.add_argument("--agent", default=DEFAULT_AGENT)
     parser.add_argument("--python", default=None, help="Python executable for the Isaac Sim worker.")
@@ -754,6 +755,11 @@ def _run_viewer(args) -> int:
             self.sdf = bool(args.sdf)
             self.keep_dr = bool(args.keep_dr)
             super().__init__(*demo_args, **demo_kwargs)
+            with self.server.gui.add_folder('Playback',expand_by_default=True):
+                self._cb_autoplay=self.server.gui.add_checkbox('Auto run episodes',initial_value=args.autoplay)
+            @self._btn_stop.on_click
+            def _disable_autoplay(_event):
+                self._cb_autoplay.value=False
             def set_problem_tolerances():
                 insertion, retract = default_tolerances(self._dd_problem.value)
                 if args.goal_mode is None:
@@ -901,8 +907,16 @@ def _run_viewer(args) -> int:
             print(f"  Peg-in-Hole Dynamic Isaac Sim Eval   http://localhost:{self.port}")
             print()
             try:
+                if args.autoplay:
+                    self._load_env()
+                next_episode_at=time.monotonic()+.75
                 while True:
                     self._poll()
+                    if self._cb_autoplay.value and self._env_ready and not self._episode_running:
+                        if time.monotonic()>=next_episode_at:
+                            self._cmd_run()
+                    else:
+                        next_episode_at=time.monotonic()+.75
                     time.sleep(1.0 / 120.0)
             except KeyboardInterrupt:
                 print("\n[isaacsim launcher] Shutting down...")
