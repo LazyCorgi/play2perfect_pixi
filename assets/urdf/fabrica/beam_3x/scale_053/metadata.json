@@ -1,0 +1,15 @@
+{
+  "problem": "beam_assembly_step1_scale_053",
+  "source_problem": "beam_assembly_step1",
+  "linear_scale": 0.53,
+  "mass_scale": 0.148877,
+  "inertia_scale": 0.04181954930000001,
+  "mass_assumption": "constant density; not hardware validated",
+  "source_sha256": {
+    "assets/urdf/fabrica/beam_3x/2/sdf_hybrid/beam_3x_2_matchedmass_sdf_hybrid.urdf": "4e93f115aa1128ff7ed0e68179d713bd201b0e0c3fbf1232b7f5c6e732fa67da",
+    "assets/urdf/fabrica/beam_3x/insertion_fixtures/part_2_sdf_hybrid.urdf": "d1efad8386e36fbd09aca87f5156b6b37704af6fd0ea11eb6fd5a22a3db00ec8"
+  },
+  "task_config": "isaacsimenvs/cfg/task/PreciseAssemblyBeamScale053.yaml",
+  "goal_mode": "preInsertAndFinal",
+  "standard_goal_xy_noise_m": 0.002
+}

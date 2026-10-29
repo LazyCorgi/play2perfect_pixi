@@ -5,8 +5,6 @@ import yaml
 from gym import spaces
 from omegaconf import DictConfig, OmegaConf
 
-from isaacsimenvs.utils.reformat import omegaconf_to_dict, print_dict
-
 
 @dataclass
 class DummyEnv:
@@ -31,7 +29,7 @@ def read_cfg(config_path: str, device: Optional[str] = None) -> dict:
     omegaconf_cfg = OmegaConf.create(raw_cfg)
 
     # Need to convert back to dict
-    cfg = omegaconf_to_dict(omegaconf_cfg)
+    cfg = OmegaConf.to_container(omegaconf_cfg, resolve=True)
 
     # Modify device manually
     if device is not None:
@@ -50,7 +48,7 @@ def read_cfg(config_path: str, device: Optional[str] = None) -> dict:
 
     print("-" * 80)
     print("CONFIGURATION")
-    print_dict(cfg)
+    print(yaml.safe_dump(cfg, sort_keys=False))
     print("-" * 80 + "\n")
 
     return cfg
@@ -85,7 +83,7 @@ def read_cfg_omegaconf(config_path: str, device: Optional[str] = None) -> DictCo
 
     print("-" * 80)
     print("CONFIGURATION")
-    print_dict(omegaconf_cfg)
+    print(OmegaConf.to_yaml(omegaconf_cfg, resolve=True))
     print("-" * 80 + "\n")
 
     return omegaconf_cfg

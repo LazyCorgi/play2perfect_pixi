@@ -71,10 +71,15 @@ def safe_filesystem_op(func, *args, **kwargs):
     raise RuntimeError(f'Could not execute {func}, give up after {num_attempts} attempts...')
 
 def safe_symlink(src, dst):
-    try:
-        safe_filesystem_op(os.remove, dst)
-    except (FileExistsError, RuntimeError):
-        pass
+    def remove_existing():
+        try:
+            os.remove(dst)
+        except FileNotFoundError:
+            # The first checkpoint has no previous link to remove. This is
+            # normal, not an NFS failure requiring exponential retries.
+            pass
+
+    safe_filesystem_op(remove_existing)
     safe_filesystem_op(os.symlink, src, dst)
 
 def safe_save(state, filename):

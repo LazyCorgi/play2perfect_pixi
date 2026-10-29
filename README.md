@@ -64,6 +64,13 @@ pixi run smoke-test
 The first install downloads Isaac Sim and requires roughly 20 GB of disk space. See
 [docs/isaacsim_installation.md](docs/isaacsim_installation.md) for details and troubleshooting.
 
+## Beam step 1 at half scale
+
+See [local reproduction and delivery](docs/beam_half_reproduction.md) for the
+0.5-scale checkpoint, demo, independent evaluation, and one-command progressive
+finetuning from the official 1.0 task model. Software pins remain in `pixi.lock`;
+model artifacts are distributed separately with SHA256 manifests.
+
 ## Quick start
 
 ### 1. Download checkpoints

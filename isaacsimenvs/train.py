@@ -209,6 +209,33 @@ def main() -> None:
         agent_cfg["params"]["config"]["device"] = args_cli.rl_device
         agent_cfg["params"]["config"]["device_name"] = args_cli.rl_device
 
+        # Save the resolved inference configuration alongside every run, before
+        # Runner adds runtime callbacks that cannot be serialized to YAML.
+        from pathlib import Path
+        import json
+        import yaml
+
+        run_dir = Path(hydra_run_dir)
+        resolved = OmegaConf.to_container(
+            OmegaConf.load(run_dir / ".hydra" / "config.yaml"), resolve=True
+        )
+        resolved["env"]["observation_space"] = env.unwrapped.cfg.observation_space
+        resolved["env"]["state_space"] = env.unwrapped.cfg.state_space
+        resolved["env"]["assets"] = env.unwrapped.cfg.assets.to_dict()
+        if hasattr(env.unwrapped.cfg, "precise_assembly"):
+            resolved["env"]["precise_assembly"] = env.unwrapped.cfg.precise_assembly.to_dict()
+        (run_dir / "config.yaml").write_text(
+            yaml.safe_dump({"env": resolved["env"], "train": agent_cfg}, sort_keys=False)
+        )
+        (run_dir / "metadata.json").write_text(json.dumps({
+            "problem": env.unwrapped.cfg.precise_assembly.problem if hasattr(env.unwrapped.cfg, "precise_assembly") else None,
+            "task": args_cli.task,
+            "actor_observations": env.unwrapped.cfg.observation_space,
+            "actions": env.unwrapped.cfg.action_space,
+            "source_checkpoint": args_cli.checkpoint,
+            "checkpoint_load_mode": args_cli.checkpoint_load_mode,
+        }, indent=2) + "\n")
+
         runner.load(agent_cfg)
         runner.reset()
         runner.run(

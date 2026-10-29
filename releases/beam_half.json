@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "problem": "beam_assembly_step1_scale_050",
+  "base_commit": "a7d0b71",
+  "protocol": "fixed_relaxed_curriculum_v1",
+  "policy_coefficient_id": 50,
+  "files": {
+    "pretrained_assembly/beam_half/config.yaml": "c10cbd9df4c678666417d12dd08f8f9a931d51cf271e736c3cc50cfceb581c95",
+    "pretrained_assembly/beam_half/model.pth": "e097ac9f1d18ba3ab1da04c2e005857d65e903cbe10fad3a96981f29ea6a4741",
+    "pretrained_assembly/beam_half/source060/accepted.json": "c848c12faeb62c2bbf3f7565b9b36692c84e5b3b0a0e752262c0e92e5b156734",
+    "pretrained_assembly/beam_half/source060/status.json": "a5e6842fc6efda4e0bf06ef9f0c36c9a1182af12590b0fb40f6a8bf4f7a148fa",
+    "pretrained_assembly/beam_half/source060.pth": "49d801ad11dc3f6757eb9cb3e9b8a2c54771c1714e6eb6fc27e06d85cc939e7f"
+  },
+  "evaluation": {
+    "selection_successes": 53,
+    "selection_trials": 64,
+    "heldout_successes": 191,
+    "heldout_trials": 256,
+    "heldout_seeds": [
+      601,
+      602,
+      603,
+      604,
+      605,
+      606,
+      607,
+      608
+    ],
+    "environments_per_seed": 32,
+    "successes_per_seed": [
+      25,
+      22,
+      27,
+      26,
+      24,
+      23,
+      25,
+      19
+    ],
+    "min_episode_steps": 0,
+    "episode_length_s": 10,
+    "goal_xy_obs_noise_m": 0.002,
+    "goal_mode": "preInsertAndFinal",
+    "insertion_success_tolerance_m": 0.005,
+    "retract_success_tolerance_m": 0.0025,
+    "metric": "full task including retraction; every first episode; deterministic SAPG branch50"
+  },
+  "lineage": {
+    "official_checkpoint_sha256": "be7e9f6c367e76a8f0697a65d3253cc8ccbdbeed83ad2dd21a126df5455481e0",
+    "source060_sha256": "49d801ad11dc3f6757eb9cb3e9b8a2c54771c1714e6eb6fc27e06d85cc939e7f",
+    "ancestors": [
+      0.9,
+      0.8,
+      0.7,
+      0.65,
+      0.6
+    ],
+    "fixed_stages": [
+      {
+        "percent": 59,
+        "selected_epoch": 500,
+        "validation_rate": 0.796875,
+        "source_sha256": "49d801ad11dc3f6757eb9cb3e9b8a2c54771c1714e6eb6fc27e06d85cc939e7f"
+      },
+      {
+        "percent": 58,
+        "selected_epoch": 100,
+        "validation_rate": 0.796875,
+        "source_sha256": "a629e4f60fa9797ffdf4c2d3b9c2869b60edecb407645ce63b9d290536e1e28d"
+      },
+      {
+        "percent": 57,
+        "selected_epoch": 300,
+        "validation_rate": 0.859375,
+        "source_sha256": "b6156089bb5a6a8e5a8e1fdb9b3a7ed7bf45f5409134468f9411bbfc9b618e97"
+      },
+      {
+        "percent": 56,
+        "selected_epoch": 300,
+        "validation_rate": 0.875,
+        "source_sha256": "55a428f3158c46d1b57ef26776ed7a745bcc3bbb8aadd64b7fcb9b967d24c1b3"
+      },
+      {
+        "percent": 55,
+        "selected_epoch": 500,
+        "validation_rate": 0.71875,
+        "source_sha256": "2e38ad9a73c31b09cc31f3249ccf03d50afb111ba10d5027b28dd8c8b54030b9"
+      },
+      {
+        "percent": 54,
+        "selected_epoch": 500,
+        "validation_rate": 0.828125,
+        "source_sha256": "54a95a7755f080de4436ef2552cfcbb7ec282b88f72c4a2ecb6006ef2cf782e9"
+      },
+      {
+        "percent": 53,
+        "selected_epoch": 100,
+        "validation_rate": 0.796875,
+        "source_sha256": "ebedcdac2e41e0f4ca13988cd6c0af2ff79709360f8e72707603814acab1c987"
+      },
+      {
+        "percent": 52,
+        "selected_epoch": 500,
+        "validation_rate": 0.875,
+        "source_sha256": "75a808f0145d8b7e7177ed54637d5168d4b2054e40ada8e3cf68db3d2ee540e3"
+      },
+      {
+        "percent": 51,
+        "selected_epoch": 500,
+        "validation_rate": 0.71875,
+        "source_sha256": "2aaeb452ac86e10911771e298b64ff9a4599eaa6b53fe336ed4be9dd1f2344ee"
+      },
+      {
+        "percent": 50,
+        "selected_epoch": 500,
+        "validation_rate": 0.828125,
+        "source_sha256": "0c56a846a1b0eba5bbb4d2079d78f0c44c667b5fb3688e12471610110e6bfd59"
+      }
+    ],
+    "coarse_stages": [
+      {
+        "percent": 90,
+        "selected_epoch": 400,
+        "validation_rate": 0.9453125,
+        "heldout_rate": 0.97265625,
+        "checkpoint_sha256": "ed5bfb61d7cfe4a2ed9476e94a51ccba3b6f7b556514405dc5086046e9f4108c"
+      },
+      {
+        "percent": 80,
+        "selected_epoch": 100,
+        "validation_rate": 0.953125,
+        "heldout_rate": 0.94921875,
+        "checkpoint_sha256": "259238218a2b5d8d3ee967fb802c2c0ea0d0de86afb546d9fce00700f25b6204"
+      },
+      {
+        "percent": 70,
+        "selected_epoch": 500,
+        "validation_rate": 0.953125,
+        "heldout_rate": 0.92578125,
+        "checkpoint_sha256": "8d4725ad4291e965ccaa05464172015af144a7b496d7cff710439a2637e5a52a"
+      },
+      {
+        "percent": 65,
+        "selected_epoch": 500,
+        "validation_rate": 0.9453125,
+        "heldout_rate": 0.8984375,
+        "checkpoint_sha256": "b7085850ca14d0d4936dcdaad09df3885213b8bbcc30581d386b39a126b27ae4"
+      },
+      {
+        "percent": 60,
+        "selected_epoch": 100,
+        "validation_rate": 0.8984375,
+        "heldout_rate": 0.87890625,
+        "checkpoint_sha256": "49d801ad11dc3f6757eb9cb3e9b8a2c54771c1714e6eb6fc27e06d85cc939e7f"
+      }
+    ]
+  }
+}

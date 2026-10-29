@@ -163,3 +163,7 @@ _branded = {
 }
 PROBLEM_REGISTRY.clear()
 PROBLEM_REGISTRY.update(_branded)
+
+from evaluation.objects import NAME_TO_OBJECT as _objects, get_repo_root_dir as _repo_root
+from evaluation.beam_scaling import register_scaled_beams
+register_scaled_beams(PROBLEM_REGISTRY, _objects, _repo_root())

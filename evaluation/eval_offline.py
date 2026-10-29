@@ -39,6 +39,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from evaluation.problem_presets import default_goal_mode, default_tolerances, task_for_problem
+
 DEFAULT_TASK = "Isaacsimenvs-PreciseAssembly-Direct-v0"
 DEFAULT_AGENT = "rl_games_sapg_cfg_entry_point"
 ALL_PROBLEMS = [
@@ -85,8 +87,16 @@ def run_worker(args) -> int:
     env = None
     diagnostics = None
     try:
+        args.task = task_for_problem(args.problem, args.task)
         cfg = _load_env_cfg(args.task)
         cfg.seed = args.seed
+        if args.episode_length_s is not None:
+            cfg.episode_length_s = args.episode_length_s
+        result.update(episode_length_s=cfg.episode_length_s, goal_mode=args.goal_mode,
+                      goal_xy_obs_noise=cfg.precise_assembly.goal_xy_obs_noise,
+                      insertion_success_tolerance=args.insertion_success_tolerance,
+                      retract_success_tolerance=args.retract_success_tolerance,
+                      min_episode_steps=args.min_episode_steps)
         _apply_env_overrides(
             cfg,
             problem=args.problem,
@@ -136,6 +146,7 @@ def run_worker(args) -> int:
             games=10**9,
             extra_overrides={},
         )
+        agent_cfg["params"]["seed"] = args.seed
         clip_obs = float(agent_cfg["params"]["env"].get("clip_observations", _math.inf))
         clip_actions = float(agent_cfg["params"]["env"].get("clip_actions", _math.inf))
         wrapped = register_rlgames_env(
@@ -147,6 +158,9 @@ def run_worker(args) -> int:
         runner.reset()
         player = runner.create_player()
         player.set_weights(_load_checkpoint_weights(player, str(args.checkpoint_path)))
+        from evaluation.policy_evaluation import use_evaluation_policy
+        use_evaluation_policy(player, args.policy_coefficient_id)
+        result["policy_coefficient_id"] = args.policy_coefficient_id
         player.has_batch_dimension = True
 
         player.reset()
@@ -256,6 +270,10 @@ def run_worker(args) -> int:
         n_done = int(done_once.sum().item())
         result.update(
             num_envs=n,
+            n_completed_first_episodes=n_done,
+            n_unfinished=n - n_done,
+            assembly_success_count_all_envs=int(first_full.sum().item()),
+            task_success_count_all_envs=int((first_retract if has_retract else first_full).sum().item()),
             n_first_episodes=nv,
             n_unstable_init=n_done - nv,
             success_rate=(float(first_full[valid].float().mean().item()) if nv else 0.0),
@@ -297,6 +315,7 @@ def run_driver(args) -> int:
     rows = []
     worker_failed = False
     for problem in problems:
+        insertion, retract = default_tolerances(problem)
         ckpt = _resolve_checkpoint(args, problem)
         if ckpt is None or not ckpt.is_file():
             print(f"[skip] {problem}: no checkpoint (looked in {args.policies_dir}/{problem}/model.pth)")
@@ -315,10 +334,13 @@ def run_driver(args) -> int:
             "--min-episode-steps", str(args.min_episode_steps),
             "--rl-device", args.rl_device,
             "--sim-device", args.sim_device,
-            "--goal-mode", args.goal_mode,
-            "--insertion-success-tolerance", str(args.insertion_success_tolerance),
-            "--retract-success-tolerance", str(args.retract_success_tolerance),
+            "--goal-mode", args.goal_mode or default_goal_mode(problem),
+            "--insertion-success-tolerance", str(args.insertion_success_tolerance if args.insertion_success_tolerance is not None else insertion),
+            "--retract-success-tolerance", str(args.retract_success_tolerance if args.retract_success_tolerance is not None else retract),
         ]
+        cmd.extend(["--policy-coefficient-id", str(args.policy_coefficient_id)])
+        if args.episode_length_s is not None:
+            cmd.extend(["--episode-length-s", str(args.episode_length_s)])
         if args.diagnostics:
             diagnostics_dir = diagnostics_root / problem
             cmd.extend(
@@ -400,9 +422,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--min-episode-steps", type=int, default=100,
                    help="Discard first episodes that end within this many steps as unstable "
                         "inits (object fell/ungraspable at reset → impossible trial).")
-    p.add_argument("--goal-mode", default="preInsertAndFinal")
-    p.add_argument("--insertion-success-tolerance", type=float, default=0.01)
-    p.add_argument("--retract-success-tolerance", type=float, default=0.005)
+    p.add_argument("--policy-coefficient-id", type=float, choices=[0,10,20,30,40,50], default=50)
+    p.add_argument("--episode-length-s", type=float, default=None, help="Per-goal timeout window; successful goals reset the timer.")
+    p.add_argument("--goal-mode", default=None)
+    p.add_argument("--insertion-success-tolerance", type=float, default=None)
+    p.add_argument("--retract-success-tolerance", type=float, default=None)
     p.add_argument("--rl-device", default="cuda:0")
     p.add_argument("--sim-device", default="cuda:0")
     p.add_argument(
@@ -440,7 +464,15 @@ def main() -> int:
     args = parser.parse_args()
     if args.diagnostics and args.num_envs > 64:
         parser.error("--diagnostics is evaluation-only and supports at most 64 environments")
+    if args.episode_length_s is not None and args.episode_length_s <= 0:
+        parser.error("--episode-length-s must be positive")
     if args.worker:
+        args.goal_mode = args.goal_mode or default_goal_mode(args.problem)
+        insertion, retract = default_tolerances(args.problem)
+        if args.insertion_success_tolerance is None:
+            args.insertion_success_tolerance = insertion
+        if args.retract_success_tolerance is None:
+            args.retract_success_tolerance = retract
         return run_worker(args)
     return run_driver(args)
 

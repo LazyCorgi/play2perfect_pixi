@@ -25,6 +25,20 @@ __all__ = ["PreciseAssemblyEnv", "PreciseAssemblyEnvCfg"]
 
 _CFG_DIR = Path(__file__).resolve().parents[2] / "cfg"
 
+# Each generated size carries an explicit shared train/eval task configuration.
+from evaluation.beam_scaling import task_name
+for _yaml in sorted((_CFG_DIR / 'task').glob('PreciseAssemblyBeamScale[0-9][0-9][0-9].yaml')):
+    gym.register(
+        id=task_name(int(_yaml.stem[-3:])),
+        entry_point='isaacsimenvs.tasks.precise_assembly.precise_assembly_env:PreciseAssemblyEnv',
+        order_enforce=False, disable_env_checker=True,
+        kwargs={
+            'env_cfg_entry_point': 'isaacsimenvs.tasks.precise_assembly.precise_assembly_env_cfg:PreciseAssemblyEnvCfg',
+            'env_cfg_yaml_entry_point': str(_yaml),
+            'rl_games_sapg_cfg_entry_point': str(_CFG_DIR / 'train' / 'PreciseAssemblyBeamSAPG.yaml'),
+        },
+    )
+
 gym.register(
     id="Isaacsimenvs-PreciseAssembly-Direct-v0",
     entry_point="isaacsimenvs.tasks.precise_assembly.precise_assembly_env:PreciseAssemblyEnv",

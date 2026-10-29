@@ -25,10 +25,12 @@ class RlPlayer:
         device: str,
         num_envs: int = 1,
         inference_batch_size: Optional[int] = None,
+        policy_coefficient_id: float = 50.0,
     ) -> None:
         self.num_observations = num_observations
         self.num_actions = num_actions
         self.device = device
+        self.policy_coefficient_id = policy_coefficient_id
 
         # Must create observation and action space
         self.observation_space = spaces.Box(
@@ -44,6 +46,9 @@ class RlPlayer:
         self.cfg = read_cfg(config_path=config_path, device=self.device)
         # self._run_sanity_checks()
         self.player = self.create_rl_player(checkpoint_path=checkpoint_path)
+        if 'learn_param' in self.player.expl_type:
+            if not bool((self.player.model.a2c_network.param_ids == self.policy_coefficient_id).any()):
+                raise ValueError('Selected SAPG policy coefficient is absent from the model')
 
     def create_rl_player(
         self, checkpoint_path: Optional[str]
@@ -97,9 +102,10 @@ class RlPlayer:
         assert_equals(obs.shape, (batch_size, self.num_observations))
 
         # SAPG HACK: Need to idx to end of observation
-        obs = torch.cat(
-            [obs, 50.0 + torch.zeros((batch_size, 1), device=self.device)], dim=1
-        )
+        if 'learn_param' in self.player.expl_type:
+            obs = torch.cat(
+                [obs, self.policy_coefficient_id + torch.zeros((batch_size, 1), device=self.device)], dim=1
+            )
 
         if batch_size <= self.inference_batch_size:
             normalized_action = self.player.get_action(
