@@ -49,11 +49,12 @@ def main() -> None:
     # --- Runtime toggles ---
     parser.add_argument("--test", action="store_true", help="Run inference (player) instead of training")
     parser.add_argument("--checkpoint", default=None, help="Path to .pth to restore")
+    parser.add_argument("--env_seed", type=int, default=None, help="Environment seed (applied after typed Hydra config loading)")
     parser.add_argument(
         "--checkpoint_load_mode",
-        choices=("resume", "weights"),
+        choices=("resume", "weights", "resume_fresh_rollout"),
         default="resume",
-        help="resume restores optimizer/rollout/env state; weights starts fresh from model weights.",
+        help="resume restores full state; weights initializes a new run; resume_fresh_rollout restores training counters/optimizers and resets rollout.",
     )
     parser.add_argument("--rl_device", default="cuda:0")
     parser.add_argument("--sim_device", default="cuda:0")
@@ -126,6 +127,8 @@ def main() -> None:
         # sim_device CLI flag still wins — it's a launcher-level concern, not
         # something we expect in the task YAML.
         env_cfg.sim.device = args_cli.sim_device
+        if args_cli.env_seed is not None:
+            env_cfg.seed = args_cli.env_seed
 
         # render_mode="rgb_array" makes DirectRLEnv.render() lazily create a
         # single omni.replicator render_product at cfg.viewer.cam_prim_path —
@@ -205,7 +208,7 @@ def main() -> None:
         runner = Runner(MultiObserver(observers))
         # Co-locate rl_games artifacts (checkpoints, summaries) with the Hydra
         # run dir so slurm logs + config + videos all live together.
-        agent_cfg["params"]["config"]["train_dir"] = hydra_run_dir
+        agent_cfg["params"]["config"]["train_dir"] = agent_cfg["params"]["config"].get("train_dir") or hydra_run_dir
         agent_cfg["params"]["config"]["device"] = args_cli.rl_device
         agent_cfg["params"]["config"]["device_name"] = args_cli.rl_device
 
@@ -220,6 +223,7 @@ def main() -> None:
             OmegaConf.load(run_dir / ".hydra" / "config.yaml"), resolve=True
         )
         resolved["env"]["observation_space"] = env.unwrapped.cfg.observation_space
+        resolved["env"]["seed"] = env.unwrapped.cfg.seed
         resolved["env"]["state_space"] = env.unwrapped.cfg.state_space
         resolved["env"]["assets"] = env.unwrapped.cfg.assets.to_dict()
         if hasattr(env.unwrapped.cfg, "precise_assembly"):

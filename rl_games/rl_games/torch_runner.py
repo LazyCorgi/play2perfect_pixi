@@ -21,6 +21,15 @@ def _restore(agent, args):
         load_mode = args.get('checkpoint_load_mode', 'resume')
         if load_mode == 'resume':
             agent.restore(args['checkpoint'])
+        elif load_mode == 'resume_fresh_rollout':
+            weights = dict(_load_checkpoint_weights(agent, args['checkpoint']))
+            # A new Kit process has a new physics world. Never combine stored
+            # observations/RNN state with freshly initialized scene state.
+            for key in ('env_state', 'obs', 'dones', 'rnn_states', 'current_rewards',
+                        'current_shaped_rewards', 'current_lengths'):
+                weights.pop(key, None)
+            agent.set_full_state_weights(weights)
+            print(f"=> resumed training counters/optimizers with fresh rollout from '{args['checkpoint']}'")
         elif load_mode == 'weights':
             weights = _load_checkpoint_weights(agent, args['checkpoint'])
             agent.set_weights(weights)
@@ -31,7 +40,7 @@ def _restore(agent, args):
                     print(f"Skipping central value checkpoint weights: {exc}")
             print(f"=> initialized model weights from '{args['checkpoint']}'")
         else:
-            raise ValueError(f"checkpoint_load_mode must be resume/weights, got {load_mode!r}")
+            raise ValueError(f"Unknown checkpoint_load_mode: {load_mode!r}")
 
 
 def _load_checkpoint_weights(agent, checkpoint_path):

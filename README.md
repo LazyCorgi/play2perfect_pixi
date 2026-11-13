@@ -66,6 +66,9 @@ The first install downloads Isaac Sim and requires roughly 20 GB of disk space. 
 
 ## Beam step 1 at half scale
 
+For RTX 5090 training directly from the official Play pretrained policy with the
+full released beam sample budget, see [setup, launch and monitoring](docs/beam_5090_training.md).
+
 See [local reproduction and delivery](docs/beam_half_reproduction.md) for the
 0.5-scale checkpoint, demo, independent evaluation, and one-command progressive
 finetuning from the official 1.0 task model. Software pins remain in `pixi.lock`;

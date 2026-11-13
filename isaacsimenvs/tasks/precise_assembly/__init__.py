@@ -36,6 +36,7 @@ for _yaml in sorted((_CFG_DIR / 'task').glob('PreciseAssemblyBeamScale[0-9][0-9]
             'env_cfg_entry_point': 'isaacsimenvs.tasks.precise_assembly.precise_assembly_env_cfg:PreciseAssemblyEnvCfg',
             'env_cfg_yaml_entry_point': str(_yaml),
             'rl_games_sapg_cfg_entry_point': str(_CFG_DIR / 'train' / 'PreciseAssemblyBeamSAPG.yaml'),
+            'rl_games_budget_cfg_entry_point': str(_CFG_DIR / 'train' / 'PreciseAssemblyBeam050BudgetSAPG.yaml'),
         },
     )
 
