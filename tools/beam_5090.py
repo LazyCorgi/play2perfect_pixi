@@ -30,22 +30,48 @@ def save(path, data):
     temp.replace(path)
 
 
-def plan(num_envs, smoke=False):
+class PhysicsCapacityError(RuntimeError):
+    """A completed process can still have produced invalid physics."""
+
+
+def check_physics_log(text):
+    match = re.search(r'PhysX error:[^\n]*|(?:contact|patch|pair|collision stack)[^\n]*(?:overflow|capacity exceeded)[^\n]*',
+                      text, re.IGNORECASE)
+    if match:
+        raise PhysicsCapacityError('Invalid physics: ' + match.group(0) + '; preserve this run and start a new run with sufficient buffers')
+
+
+def physics_buffers(num_envs):
+    # Explicit headroom, not a peak-capacity guarantee. Capacity must grow with
+    # scene population even when CUDA's overall memory usage remains low.
+    def capacity(minimum, per_env):
+        return 1 << (max(minimum, num_envs * per_env) - 1).bit_length()
+    return dict(gpu_max_rigid_contact_count=capacity(524288, 512),
+                gpu_max_rigid_patch_count=capacity(131072, 128),
+                gpu_found_lost_aggregate_pairs_capacity=capacity(131072, 128),
+                gpu_total_aggregate_pairs_capacity=capacity(262144, 256),
+                gpu_collision_stack_size=capacity(134217728, 65536))
+
+
+def plan(num_envs, smoke=False, smoke_epochs=256):
     # Keep six coefficient-conditioned policy groups compatible with Play.
     if num_envs < 96 or num_envs % 96 or FRAMES % (num_envs * 16):
         raise ValueError('num-envs must be a multiple of 96 and divide the exact sample budget /16')
-    epochs = 32 if smoke else FRAMES // (num_envs * 16)
+    if smoke_epochs < 32:
+        raise ValueError('smoke-epochs must be at least 32; use 256 or more for capacity testing')
+    epochs = smoke_epochs if smoke else FRAMES // (num_envs * 16)
     return dict(num_envs=num_envs, block_size=num_envs // 6,
                 minibatch_size=num_envs * 8, epochs=epochs,
                 budget_frames=num_envs * 16 * epochs,
                 save_frequency=epochs if smoke else max(1, epochs // 20),
-                smoke=smoke, seed=42, scale=.5, official_reference_frames=FRAMES)
+                smoke=smoke, seed=42, scale=.5, official_reference_frames=FRAMES,
+                physics_buffers=physics_buffers(num_envs), protocol='scaled_physx_buffers_v2')
 
 
 def train_command(directory, recipe, checkpoint=SOURCE, resume=False, attempt=0):
     # Reuse the same experiment dir for optimizer checkpoints/TensorBoard;
     # Hydra provenance for each restart is kept in a separate attempt directory.
-    return [sys.executable, '-u', 'isaacsimenvs/train.py',
+    command = [sys.executable, '-u', 'isaacsimenvs/train.py',
             '--task', 'Isaacsimenvs-PreciseAssemblyBeamScale050-Direct-v0',
             '--agent', 'rl_games_budget_cfg_entry_point', '--checkpoint', str(checkpoint),
             '--checkpoint_load_mode', 'resume_fresh_rollout' if resume else 'weights', '--headless', '--env_seed', '42',
@@ -57,6 +83,8 @@ def train_command(directory, recipe, checkpoint=SOURCE, resume=False, attempt=0)
             f'agent.params.config.save_frequency={recipe["save_frequency"]}',
             f'+agent.params.config.train_dir={directory / "train"}',
             f'hydra.run.dir={directory / ("attempt_%03d" % attempt)}']
+    command += [f'env.sim.physx.{key}={value}' for key,value in recipe['physics_buffers'].items()]
+    return command
 
 
 def latest_checkpoint(directory):
@@ -100,6 +128,7 @@ def main():
     parser.add_argument('--run-id', default='beam050_5090_v1')
     parser.add_argument('--num-envs', type=int, default=1536)
     parser.add_argument('--smoke', action='store_true')
+    parser.add_argument('--smoke-epochs', type=int, default=256)
     parser.add_argument('--resume', action='store_true')
     args = parser.parse_args()
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', args.run_id):
@@ -117,7 +146,7 @@ def main():
                               gpu=torch.cuda.get_device_name(), capability=torch.cuda.get_device_capability(),
                               memory_gib=torch.cuda.get_device_properties(0).total_memory / 2**30), indent=2))
         return
-    recipe = plan(args.num_envs, args.smoke)
+    recipe = plan(args.num_envs, args.smoke, args.smoke_epochs)
     if args.mode == 'plan':
         print(json.dumps(recipe, indent=2)); return
     if not SOURCE.is_file() or digest(SOURCE) != SOURCE_SHA:
@@ -127,6 +156,8 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if args.resume:
             state = json.loads((directory / 'status.json').read_text())
+            if state.get('invalid_physics'):
+                raise ValueError('This run recorded invalid physics and cannot be resumed; use a new run-id')
             if state['recipe'] != recipe or state['source_sha256'] != SOURCE_SHA:
                 raise ValueError('Resume must keep run recipe unchanged')
             current_head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -163,12 +194,15 @@ def main():
                                          env=dict(os.environ, OMNI_KIT_ACCEPT_EULA='YES', PYTHONUNBUFFERED='1'))
                 publish(active_step=label, child_pid=child.pid, active_log=str(log_path))
                 offset = 0
+                tail = ''
                 try:
                     while child.poll() is None:
                         if stopped[0] or (directory / 'STOP').exists():
                             raise InterruptedError('Stop requested; restart from latest saved checkpoint')
                         with log_path.open() as reader:
                             reader.seek(offset); chunk = reader.read(); offset = reader.tell()
+                        check_physics_log(tail + chunk)
+                        tail = (tail + chunk)[-512:]
                         epochs = re.findall(r'epoch\s*:\s*([\d,]+)\s*/', chunk)
                         if epochs and label.startswith('training'):
                             epoch = int(epochs[-1].replace(',', ''))
@@ -177,6 +211,11 @@ def main():
                         else:
                             publish()
                         time.sleep(2)
+                    # Catch errors emitted after the last poll, even if Kit
+                    # reports exit code zero; smoke must never pass on overflow.
+                    with log_path.open() as reader:
+                        reader.seek(offset)
+                        check_physics_log(tail + reader.read())
                     if child.returncode:
                         raise RuntimeError(f'{label} failed ({child.returncode}); see {log_path}')
                 finally:
@@ -239,6 +278,8 @@ def main():
             publish(status='completed')
         except BaseException as exc:
             publish(status='stopped' if isinstance(exc, (InterruptedError, KeyboardInterrupt)) else 'failed', error=str(exc))
+            if isinstance(exc, PhysicsCapacityError):
+                publish(invalid_physics=True)
             raise
 
 

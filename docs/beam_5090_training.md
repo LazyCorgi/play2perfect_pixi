@@ -105,7 +105,7 @@ bash tools/train_beam_5090.sh plan --num-envs 1536
 
 ## 先短测，再正式训练
 
-先在前台运行相同规模、32 epochs 的 smoke；首次 shader/URDF 构建可能较慢：
+先在前台运行相同规模、默认 256 epochs 的 smoke；首次 shader/URDF 构建可能较慢：
 
 ```bash
 bash tools/train_beam_5090.sh smoke --run-id smoke5090_n1536_v1 --num-envs 1536
@@ -116,7 +116,53 @@ bash tools/train_beam_5090.sh status --run-id smoke5090_n1536_v1
 同时使用 `watch -n 2 nvidia-smi` 查看显存与利用率。
 若 OOM，改为 768 并使用新的 smoke run-id；若 PhysX 报 contact/buffer 不足，应停止，
 调整配置并另开实验，不能忽略错误后将结果当有效训练。
-短测验证启动、一次 episode 内的更新和保存，不代表长时稳定或成功率验收。
+默认 smoke 覆盖 4096 控制步，超过六个默认超时窗口；仍不代表长时稳定或成功率验收。
+原版 32 epochs 仅 512 步，未覆盖完整默认超时窗口，不足以检验大场景的后期接触峰值。
+`--smoke-epochs 512` 可进一步延长压力检查（正式训练预算不变）。
+
+### Contact / Patch buffer overflow
+
+这种错误是 PhysX 预分配接触记录容量不足，即使显存、内存和利用率均较低也会发生。
+[PhysX 官方 GPU Memory 说明](https://nvidia-omniverse.github.io/PhysX/physx/5.4.1/docs/GPURigidBodies.html#gpu-memory)
+指出部分缓冲区无法动态增长，溢出的 contacts/constraints/pairs 会被丢弃，影响物理行为。
+溢出期间的奖励、接触和状态不能作为可靠训练数据。
+
+早期入口仅扩大 num-envs，却沿用 96 环境任务 YAML 的容量（contact 524288、patch 131072）。
+6144 环境实测日志要求至少约 contact 690201、patch 189806，说明旧容量确实不足。
+修复后的入口按 num-envs 生成 2 的幂次容量并写进 recipe、训练命令及解析配置。
+6144 环境的初始配置为：
+
+| PhysX 字段 | 容量 |
+|---|---:|
+| gpu_max_rigid_contact_count | 4194304 |
+| gpu_max_rigid_patch_count | 1048576 |
+| gpu_found_lost_aggregate_pairs_capacity | 1048576 |
+| gpu_total_aggregate_pairs_capacity | 2097152 |
+| gpu_collision_stack_size | 536870912 bytes |
+
+这些值为已有峰值留出余量，不保证所有后续策略状态都足够。
+入口在训练或评测日志发现 `PhysX error:` / buffer overflow 后停止子进程、标记
+`status=failed, invalid_physics=true`，即便 Isaac Sim 最终返回 0 也不接受结果；
+同一 invalid_physics 运行禁止 resume。
+
+先用旧版本的 STOP 机制停止已有溢出运行，保留日志和权重用于诊断；
+不能将其标为正式完成，也不要直接从可能受影响的权重继续做有效实验。
+同步修复后，使用新的 run-id 从 Play 重跑更长 smoke，再正式训练：
+
+```bash
+# 等旧 run 的 status=stopped 后再启动其他 Isaac Sim 进程。
+bash tools/train_beam_5090.sh smoke --run-id smoke5090_n6144_buffers_v2 --num-envs 6144
+bash tools/train_beam_5090.sh train --run-id beam050_5090_n6144_buffers_v2 --num-envs 6144
+```
+
+未更新入口时的临时修复：停止旧进程，在远端
+`isaacsimenvs/cfg/task/PreciseAssemblyBeamScale050.yaml` 的 `sim.physx` 下填入上表五个数值，
+再用新 run-id 启动。配置写入日志以便复核。
+旧入口没有自动终止保护且 smoke 仍仅 32 epochs，应持续检查正式日志并优先同步入口修复。
+增大容量不会改变 timestep、solver 迭代数或训练预算；修改后的随机轨迹仍可能与旧运行不同。
+本轮修复已在本机 96 环境、32 epochs 验证显式容量能正确加载并完成 GPU 训练；
+79 项项目测试通过，其中覆盖仿真退出码为 0 但日志溢出时仍判失败的回归场景。
+未在 5090 上重新实测 6144 环境；远端须用默认 256 epochs 或更长 smoke 确认容量与显存余量。
 
 建议用 tmux 保持 SSH 断线后运行；没有 tmux 时先由系统管理员安装：
 
