@@ -63,6 +63,41 @@ bash tools/train_beam_5090.sh install
 [PyTorch 2.7 官方说明](https://pytorch.org/blog/pytorch-2-7/) 确认 CUDA 12.8 wheel 支持 Blackwell。
 `check` 会真实运行 CUDA 运算和反向传播，不只检查 CUDA 是否可见。
 
+### 下载时报 SSL EOF / 无法访问 Hugging Face
+
+若已经看到 CUDA 运算成功及 `Isaac Sim headless boot and project import: OK`，随后在下载时
+出现 `SSL: UNEXPECTED_EOF_WHILE_READING`，失败点是模型网络下载，不需要重新安装环境。
+旧版 snapshot 下载器会先打印无法访问 Hub，随后误报 `play/model.pth` 不存在。
+现下载器按单文件下载、重试网络故障，校验官方哈希后才发布目标模型；已有文件也会校验。
+
+仅重试权重步骤：
+
+```bash
+bash tools/train_beam_5090.sh weights --retries 3
+```
+
+如果网络要求代理，请在远端设置其实际可达的 `HTTPS_PROXY`/`HTTP_PROXY`；不要照搬另一台机器的
+`127.0.0.1` 代理端口。也可以用 `weights --endpoint https://YOUR-SELECTED-HUB-ENDPOINT`，
+只指定自己信任且能访问的 Hub 服务，不关闭 TLS 校验。参数依据
+[Hugging Face 单文件下载接口](https://huggingface.co/docs/huggingface_hub/en/package_reference/file_download)。
+
+完全离线的办法是在已有模型的电脑上，通过 scp/rsync 将 `pretrained_policy/model.pth`
+复制到远端仓库相同路径（约 414 MB）；不要误传 `pretrained_assembly/` 下的任务模型。
+远端核验：
+
+```bash
+mkdir -p pretrained_policy
+# 将官方 Stage-1 model.pth 放入该目录后：
+echo '4cb0d09833326de6878ee5681c2b14521823fa616e01b135214a51ffe41c63b9  pretrained_policy/model.pth' | sha256sum -c -
+bash tools/train_beam_5090.sh smoke --run-id smoke5090_n1536_v1 --num-envs 1536
+```
+
+日志中的 Pixi `system-requirements` deprecated 和 Kit extension.toml 警告没有阻止本次安装。
+`Failed to create directory .../Documents/Kit/apps/Isaac-Sim/scripts/new_stage` 也未阻止此次 headless
+检查成功，但反映该目录权限或 Documents 路径异常；可检查 `ls -ld ~/Documents` 和
+`namei -l ~/Documents/Kit/apps/Isaac-Sim/scripts/new_stage`，按实际所有权修复，避免直接 sudo 运行训练。
+CPU powersave 提示影响吞吐，不是本次下载失败原因；正式测速前可按机器管理策略调整性能模式。
+
 ```bash
 bash tools/train_beam_5090.sh check
 bash tools/train_beam_5090.sh plan --num-envs 1536
